@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../services/api';
-import { Toaster } from 'sonner';
+import { toast } from 'sonner';
 import { Lock, Mail, UserPlus, LogIn, Scale, Ruler, Calendar, Activity, Target } from 'lucide-react';
 
 export default function Auth({ onProfileCompleted }) {
@@ -91,7 +91,7 @@ export default function Auth({ onProfileCompleted }) {
   const handleOnboardingSubmit = async (e) => {
     e.preventDefault();
     if (!age || !weight || !height) {
-      return Toaster.warning('Datos incompletos', {
+      return toast.warning('Datos incompletos', {
         description: 'Por favor, rellena tus datos físicos antes de continuar.'
       });
     }
@@ -99,7 +99,7 @@ export default function Auth({ onProfileCompleted }) {
 
     const targets = calculateMacros();
 
-    const saveProfilePromise = await apiService.saveProfile({
+    const saveProfilePromise = apiService.saveProfile({
       gender,
       age: parseInt(age),
       weight_kg: parseFloat(weight),
@@ -109,7 +109,7 @@ export default function Auth({ onProfileCompleted }) {
       ...targets
     });
 
-    Toaster.promise(saveProfilePromise, {
+    toast.promise(saveProfilePromise, {
       loading: 'Calculando tus macros y guardando perfil...',
       success: () => {
         // Este bloque se ejecuta SI la promesa se resuelve con éxito

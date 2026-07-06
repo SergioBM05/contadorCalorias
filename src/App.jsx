@@ -6,6 +6,8 @@ import Scanner from './pages/Scanner';
 import Auth from './pages/Auth';
 import { RefreshCw } from 'lucide-react';
 import Profile from './pages/profile';
+import Historial from './pages/Historial';
+import { Toaster } from 'sonner';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -79,6 +81,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+    <Toaster richColors position="top-center" />
       <Routes>
         {/* 1. Dashboard: Solo si hay sesión Y tiene perfil completo */}
         <Route
@@ -113,6 +116,11 @@ export default function App() {
         <Route
           path='/profile'
           element={session && hasProfile ? <Profile /> : <Navigate to="/auth" replace />}
+        />
+
+        <Route
+          path='/historial'
+          element={session && hasProfile ? <Historial /> : <Navigate to="/auth" replace />}
         />
 
         <Route path="*" element={<Navigate to="/" replace />} />

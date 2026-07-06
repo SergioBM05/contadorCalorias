@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../services/supabaseClient";
-import { Plus, Flame, Activity, Sparkles, User } from "lucide-react";
+import { Plus, Flame, Activity, Sparkles, User ,CalendarDays} from "lucide-react";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -98,6 +98,12 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate("/historial")}
+              className="p-3 border border-[var(--border)] bg-[var(--card-bg)] text-[var(--text-h)] hover:bg-[var(--border)] rounded-full transition-transform active:scale-95 flex items-center justify-center"
+            >
+              <CalendarDays className="w-5 h-5" />
+            </button>
             <button
               onClick={() => navigate("/profile")}
               className="p-3 border border-[var(--border)] bg-[var(--card-bg)] text-[var(--text-h)] hover:bg-[var(--border)] rounded-full transition-transform active:scale-95 flex items-center justify-center"

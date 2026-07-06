@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../services/supabaseClient";
 import { apiService } from "../services/api";
+import { toast } from 'sonner';
 import { ArrowLeft, Save, LogOut, Scale, Ruler, Calendar, Activity, Target } from "lucide-react";
 
 export default function Profile() {
@@ -39,6 +40,7 @@ export default function Profile() {
         }
       } catch (err) {
         console.error("Error al cargar perfil:", err.message);
+        toast.error("No se pudieron cargar tus datos de perfil");
       } finally {
         setLoading(false);
       }
@@ -80,11 +82,10 @@ export default function Profile() {
     e.preventDefault();
     setSaving(true);
 
-    try {
+    // Creamos la promesa de la petición al API
+    const updatePromise = async () => {
       const targets = calculateMacros();
-
-      // Enviamos la actualización a tu backend de Node.js
-      await apiService.saveProfile({
+      return await apiService.saveProfile({
         gender,
         age: parseInt(age),
         weight_kg: parseFloat(weight), 
@@ -93,21 +94,39 @@ export default function Profile() {
         fitness_goal: goal,
         ...targets 
       });
+    };
 
-      alert("¡Perfil y objetivos actualizados con éxito!");
-      navigate("/");
-    } catch (err) {
-      alert(err.message || "Error al actualizar");
-    } finally {
-      setSaving(false);
-    }
+    // Lanzamos el toast interactivo con estados (Loading, Success, Error)
+    toast.promise(updatePromise(), {
+      loading: 'Actualizando tu perfil y recalculando objetivos...',
+      success: () => {
+        setSaving(false);
+        setTimeout(() => navigate("/"), 1000); // Redirige un segundo después
+        return '¡Perfil y macros actualizados con éxito! 🚀';
+      },
+      error: (err) => {
+        setSaving(false);
+        return err.message || 'Error al actualizar el perfil';
+      }
+    });
   };
 
-  const handleLogout = async () => {
-    if (window.confirm("¿Seguro que quieres cerrar sesión?")) {
-      await supabase.auth.signOut();
-      navigate("/auth");
-    }
+  const handleLogout = () => {
+    // Reemplazamos el confirm nativo por un Toast con botones de acción customizados
+    toast('¿Seguro que quieres cerrar sesión?', {
+      action: {
+        label: 'Cerrar Sesión',
+        onClick: async () => {
+          await supabase.auth.signOut();
+          toast.success("Sesión cerrada correctamente");
+          navigate("/auth");
+        }
+      },
+      cancel: {
+        label: 'Cancelar',
+        onClick: () => {}
+      }
+    });
   };
 
   if (loading) {
@@ -128,7 +147,7 @@ export default function Profile() {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h1 className="text-xl font-black tracking-tight !m-0">Ajustes de Perfil</h1>
-          <button onClick={handleLogout} className="p-2 border border-red-500/20 text-red-500 rounded-full bg-red-500/10 hover:scale-95 transition">
+          <button type="button" onClick={handleLogout} className="p-2 border border-red-500/20 text-red-500 rounded-full bg-red-500/10 hover:scale-95 transition">
             <LogOut className="w-5 h-5" />
           </button>
         </div>

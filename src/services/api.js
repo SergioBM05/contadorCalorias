@@ -1,7 +1,12 @@
 import { supabase } from './supabaseClient';
 
 // 1. Limpiamos la URL base añadiendo el /api que definiste en Express
-const API_URL = 'https://back-contador-calorias.vercel.app/api'; 
+
+//Ruta para vercel
+//const API_URL = 'https://back-contador-calorias.vercel.app/api'; 
+
+//Ruta para pruebas en local
+const API_URL = 'http://localhost:5000/api';
 
 const getAuthHeaders = async () => {
   const { data: { session } } = await supabase.auth.getSession();
@@ -40,6 +45,17 @@ export const apiService = {
     if (!response.ok) throw new Error('Error al obtener las comidas');
     return response.json();
   },
+
+  //Traer el historial de todas las comidas 
+  getAllMealsHistory: async () => {
+  const headers = await getAuthHeaders();
+  const response = await fetch(`${API_URL}/meals/history`, { 
+    method: 'GET',
+    headers
+  });
+  if (!response.ok) throw new Error('Error al obtener el historial completo');
+  return response.json();
+},
 
   saveProfile: async (profileData) => {
     const { data: { user } } = await supabase.auth.getUser();
