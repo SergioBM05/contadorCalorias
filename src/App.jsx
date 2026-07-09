@@ -7,12 +7,14 @@ import Auth from './pages/Auth';
 import { RefreshCw } from 'lucide-react';
 import Profile from './pages/profile';
 import Historial from './pages/Historial';
+import Navbar from './pages/Navbar'; // 
 import { Toaster } from 'sonner';
+import Evolucion from './pages/Evolucion';
 
 export default function App() {
   const [session, setSession] = useState(null);
   const [initializing, setInitializing] = useState(true);
-  const [hasProfile, setHasProfile] = useState(false); // 👈 Controla si ya pasó el onboarding
+  const [hasProfile, setHasProfile] = useState(false); // 
 
   const isProfileComplete = (profile) => {
     if (!profile) return false;
@@ -79,52 +81,69 @@ export default function App() {
     );
   }
 
+  // Comprobamos si el usuario cumple los requisitos para ver la barra de navegación
+  const showNavbar = Boolean(session && hasProfile);
+
   return (
     <BrowserRouter>
-    <Toaster richColors position="top-center" />
-      <Routes>
-        {/* 1. Dashboard: Solo si hay sesión Y tiene perfil completo */}
-        <Route
-          path="/"
-          element={
-            session
-              ? (hasProfile ? <Dashboard session={session} /> : <Navigate to="/auth" replace />)
-              : <Navigate to="/auth" replace />
-          }
-        />
+      <Toaster richColors position="top-center" />
+      
+      {/* Si el usuario está logueado, añadimos padding inferior para que el contenido no quede oculto bajo el Navbar */}
+      <div className={showNavbar ? "pb-24" : ""}>
+        <Routes>
+          {/* 1. Dashboard: Solo si hay sesión Y tiene perfil completo */}
+          <Route
+            path="/"
+            element={
+              session
+                ? (hasProfile ? <Dashboard session={session} /> : <Navigate to="/auth" replace />)
+                : <Navigate to="/auth" replace />
+            }
+          />
 
-        {/* 2. Escáner: Protegido igual */}
-        <Route
-          path="/scanner"
-          element={
-            session
-              ? (hasProfile ? <Scanner session={session} /> : <Navigate to="/auth" replace />)
-              : <Navigate to="/auth" replace />
-          }
-        />
+          {/* 2. Escáner: Protegido igual */}
+          <Route
+            path="/scanner"
+            element={
+              session
+                ? (hasProfile ? <Scanner session={session} /> : <Navigate to="/auth" replace />)
+                : <Navigate to="/auth" replace />
+            }
+          />
 
-        {/* 3. Auth: Si NO hay sesión va a Auth. Si HAY sesión pero NO perfil, lo DEJAMOS en Auth para que haga el Paso 2 */}
-        <Route
-          path="/auth"
-          element={
-            !session
-              ? <Auth onProfileCompleted={() => setHasProfile(true)} />
-              : (hasProfile ? <Navigate to="/" replace /> : <Auth onProfileCompleted={() => setHasProfile(true)} />)
-          }
-        />
+          {/* 3. Auth: Si NO hay sesión va a Auth. Si HAY sesión pero NO perfil, lo DEJAMOS en Auth para que haga el Paso 2 */}
+          <Route
+            path="/auth"
+            element={
+              !session
+                ? <Auth onProfileCompleted={() => setHasProfile(true)} />
+                : (hasProfile ? <Navigate to="/" replace /> : <Auth onProfileCompleted={() => setHasProfile(true)} />)
+            }
+          />
 
-        <Route
-          path='/profile'
-          element={session && hasProfile ? <Profile /> : <Navigate to="/auth" replace />}
-        />
+          <Route
+            path='/profile'
+            element={session && hasProfile ? <Profile /> : <Navigate to="/auth" replace />}
+          />
 
-        <Route
-          path='/historial'
-          element={session && hasProfile ? <Historial /> : <Navigate to="/auth" replace />}
-        />
+          <Route
+            path='/historial'
+            element={session && hasProfile ? <Historial /> : <Navigate to="/auth" replace />}
+          />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+           <Route
+            path='/evolucion'
+            element={session && hasProfile ? <Evolucion /> : <Navigate to="/auth" replace />}
+          />
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+
+
+        </Routes>
+      </div>
+
+      {/* 4. Navbar Flotante: Solo se monta si el usuario está autenticado y con perfil completo */}
+      {showNavbar && <Navbar />}
     </BrowserRouter>
   );
 }

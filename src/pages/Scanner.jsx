@@ -1,8 +1,48 @@
 import { useState, useRef } from 'react';
 import { apiService } from '../services/api'; 
 import { supabase } from '../services/supabaseClient'; 
-import { Camera, Flame, Beef, Wheat, Nut, RefreshCw, Upload, Sparkles, MoveLeft, Check, Edit2, RotateCcw } from 'lucide-react';
+import { Camera, Flame, Beef, Wheat, Nut, RefreshCw,  Sparkles, MoveLeft, Check, Edit2, RotateCcw, Plus, Minus } from 'lucide-react';
 import { useNavigate } from "react-router-dom";
+
+// Componente optimizado en fila horizontal compacta para móviles
+const MacroInput = ({ icon, label, value, onChange }) => (
+  <div className="bg-[var(--bg)] p-3.5 rounded-2xl border border-[var(--border)] shadow-sm flex items-center justify-between gap-4 w-full">
+    {/* Izquierda: Icono y Nombre */}
+    <div className="flex items-center gap-2.5 min-w-[100px]">
+      <div className="p-1.5 rounded-lg bg-[var(--code-bg)]">
+        {icon}
+      </div>
+      <span className="text-xs text-[var(--text-h)] font-bold uppercase tracking-wider">{label}</span>
+    </div>
+    
+    {/* Derecha: Controles y gramos */}
+    <div className="flex items-center gap-3">
+      <div className="flex items-center bg-[var(--code-bg)] rounded-xl border border-[var(--border)] p-1 h-10">
+        <button 
+          type="button"
+          onClick={() => onChange(Math.max(0, value - 1))}
+          className="p-1 text-[var(--text-h)] active:bg-[var(--border)] rounded-lg transition-colors"
+        >
+          <Minus className="w-3.5 h-3.5" />
+        </button>
+        <input 
+          type="number" 
+          value={value}
+          onChange={(e) => onChange(parseInt(e.target.value) || 0)}
+          className="w-12 text-center bg-transparent text-sm font-black text-[var(--text-h)] outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        />
+        <button 
+          type="button"
+          onClick={() => onChange(value + 1)}
+          className="p-1 text-[var(--text-h)] active:bg-[var(--border)] rounded-lg transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <span className="text-xl font-black text-[var(--text-h)] min-w-[50px] text-right">{value}g</span>
+    </div>
+  </div>
+);
 
 export default function Scanner() {
   const navigate = useNavigate();
@@ -86,66 +126,66 @@ export default function Scanner() {
     }
   };
 
-  return (
-    <div className="w-full flex-1 flex flex-col justify-between px-6 md:px-12 pb-8 text-left font-sans">
+  // Función para actualizar macros individuales
+  const updateMacro = (macro, value) => {
+    setMacros(prev => ({ ...prev, [macro]: value }));
+  };
 
-      {/* Header */}
-      <header className="py-6 border-b border-[var(--border)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <button
-          onClick={() => navigate("/")}
-          className="p-3 bg-[var(--text-h)] text-[var(--bg)] hover:opacity-90 rounded-full shadow-lg transition-transform active:scale-95 flex items-center justify-center self-start"
-        >
-          <MoveLeft className="w-6 h-6" />
-        </button>
+  return (
+    <div className="w-full min-h-screen flex flex-col px-4 pb-6 text-left font-sans max-w-md mx-auto">
+
+      {/* Header (Simplificado para móvil) */}
+      <header className="py-4 border-b border-[var(--border)] flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => navigate("/")}
+            className="p-2.5 bg-[var(--text-h)] text-[var(--bg)] hover:opacity-90 rounded-full shadow-md transition-transform active:scale-95 flex items-center justify-center"
+          >
+            <MoveLeft className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-1.5 bg-[var(--accent-bg)] border border-[var(--accent-border)] text-[var(--accent)] px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider">
+            <Sparkles className="w-3.5 h-3.5" />
+            IA 100%
+          </div>
+        </div>
         <div>
-          <h1 className="!my-0 font-black tracking-tight text-4xl sm:text-5xl bg-gradient-to-r from-[var(--text-h)] to-[var(--accent)] bg-clip-text text-transparent">
+          <h1 className="!my-0 font-black tracking-tight text-2xl bg-gradient-to-r from-[var(--text-h)] to-[var(--accent)] bg-clip-text text-transparent">
             MEALSCAN AI
           </h1>
-          <p className="text-sm mt-2 text-[var(--text)]">
-            Analiza tus macros al instante usando visión artificial. La IA se encarga de todo.
+          <p className="text-xs text-[var(--text)] opacity-80">
+            Analiza tus macros al instante usando visión artificial.
           </p>
-        </div>
-
-        <div className="self-start sm:self-center flex items-center gap-2 bg-[var(--accent-bg)] border border-[var(--accent-border)] text-[var(--accent)] px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider">
-          <Sparkles className="w-3.5 h-3.5" />
-          Modo Inteligente 100% IA
         </div>
       </header>
 
-      {/* Grid de Contenido */}
-      <main className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-8 my-8 items-start">
+      {/* Contenido (Diseño de Stack Vertical para móvil) */}
+      <main className="flex-1 flex flex-col gap-5 my-4">
 
-        {/* Columna Izquierda: Captura */}
-        <div className="w-full flex flex-col gap-4">
-          <h2 className="!mb-2 font-bold text-[var(--text-h)] text-lg">1. Captura tu plato</h2>
+        {/* 1. Captura */}
+        <div className="w-full flex flex-col gap-2">
+          <h2 className="font-black text-[var(--text-h)] text-xs uppercase tracking-widest opacity-60">1. Captura tu plato</h2>
 
           {!image ? (
             <div
               onClick={() => fileInputRef.current.click()}
-              className="border-2 border-dashed border-[var(--border)] rounded-3xl h-80 sm:h-96 flex flex-col items-center justify-center cursor-pointer p-6 bg-[var(--code-bg)] hover:border-[var(--accent)] transition-all duration-300 shadow-[var(--shadow)] group"
+              className="border-2 border-dashed border-[var(--border)] rounded-3xl h-56 flex flex-col items-center justify-center cursor-pointer p-5 bg-[var(--code-bg)] hover:border-[var(--accent)] transition-all duration-300 shadow-[var(--shadow)]"
             >
-              <div className="bg-[var(--accent-bg)] p-4 rounded-full mb-4 group-hover:scale-110 transition-transform">
-                <Camera className="w-10 h-10 text-[var(--accent)]" />
+              <div className="bg-[var(--accent-bg)] p-3 rounded-full mb-2">
+                <Camera className="w-8 h-8 text-[var(--accent)]" />
               </div>
-              <p className="text-base font-semibold text-[var(--text-h)] mb-1">
-                Haz una foto o arrastra una imagen
+              <p className="text-sm font-bold text-[var(--text-h)] mb-0.5">
+                Haz una foto o sube una imagen
               </p>
-              <p className="text-xs text-[var(--text)] text-center max-w-xs">
-                Soporta capturas desde la cámara de tu móvil o archivos de tu galería.
-              </p>
-              <button className="mt-4 flex items-center gap-2 text-xs font-bold bg-[var(--bg)] border border-[var(--border)] text-[var(--text-h)] px-4 py-2 rounded-xl shadow-sm">
-                <Upload className="w-3.5 h-3.5" /> Examinar archivos
-              </button>
             </div>
           ) : (
             <div className="relative rounded-3xl overflow-hidden border border-[var(--border)] bg-[var(--code-bg)] shadow-[var(--shadow)]">
-              <img src={image} alt="Plato" className="w-full h-80 sm:h-96 object-cover" />
+              <img src={image} alt="Plato" className="w-full h-56 object-cover" />
               {!hasScanned && (
                 <button
                   onClick={() => setImage(null)}
-                  className="absolute top-4 right-4 bg-black/80 hover:bg-black text-white px-4 py-2 rounded-xl text-xs font-bold tracking-wide transition"
+                  className="absolute top-3 right-3 bg-black/70 active:bg-black text-white px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide transition"
                 >
-                  Cambiar imagen
+                  Cambiar
                 </button>
               )}
             </div>
@@ -160,95 +200,95 @@ export default function Scanner() {
             <button
               onClick={handleScan}
               disabled={loading}
-              className="w-full bg-[var(--accent)] hover:opacity-90 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition shadow-md disabled:opacity-50 text-base"
+              className="w-full bg-[var(--accent)] text-white font-black py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-md active:scale-[0.99] transition-transform disabled:opacity-50 text-sm tracking-wide"
             >
-              {loading ? <RefreshCw className="animate-spin w-5 h-5" /> : <Flame className="w-5 h-5" />}
-              {loading ? "Analizando composición..." : "ANALIZAR CALORÍAS"}
+              {loading ? <RefreshCw className="animate-spin w-4 h-4" /> : <Flame className="w-4 h-4" />}
+              {loading ? "ANALIZANDO COMPOSICIÓN..." : "ANALIZAR CALORÍAS"}
             </button>
           )}
         </div>
 
-        {/* Columna Derecha: Resultado e Interacción */}
-        <div className="w-full h-full flex flex-col justify-start">
-          <h2 className="!mb-2 font-bold text-[var(--text-h)] text-lg">2. Desglose Nutricional</h2>
+        {/* 2. Resultados */}
+        <div className="w-full flex flex-col gap-2">
+          <h2 className="font-black text-[var(--text-h)] text-xs uppercase tracking-widest opacity-60">2. Desglose Nutricional</h2>
 
           {!hasScanned && !loading && (
-            <div className="border border-[var(--border)] rounded-3xl p-8 text-center text-[var(--text)] flex flex-col items-center justify-center h-80 sm:h-96 bg-[var(--bg)] bg-opacity-40">
-              <p className="text-sm max-w-xs">
-                Saca o sube una captura para ver el análisis detallado de proteínas, carbohidratos, grasas y calorías estimadas aquí.
+            <div className="border border-[var(--border)] rounded-3xl p-6 text-center text-[var(--text)] flex flex-col items-center justify-center h-48 bg-[var(--bg)] bg-opacity-40">
+              <p className="text-xs max-w-xs opacity-70">
+                Saca una captura para ver el análisis detallado aquí.
               </p>
             </div>
           )}
 
           {loading && (
-            <div className="border border-[var(--border)] rounded-3xl p-8 text-center flex flex-col items-center justify-center h-80 sm:h-96 bg-[var(--code-bg)] animate-pulse">
-              <RefreshCw className="w-10 h-10 text-[var(--accent)] animate-spin mb-4" />
-              <p className="text-base font-bold text-[var(--text-h)]">Procesando imagen de forma segura...</p>
-              <p className="text-xs text-[var(--text)] mt-1">El backend está llamando a Gemini para calcular tus macros de forma visual.</p>
+            <div className="border border-[var(--border)] rounded-3xl p-6 text-center flex flex-col items-center justify-center h-48 bg-[var(--code-bg)] animate-pulse">
+              <RefreshCw className="w-8 h-8 text-[var(--accent)] animate-spin mb-2" />
+              <p className="text-xs font-bold text-[var(--text-h)]">Calculando tus macros con la IA...</p>
             </div>
           )}
 
           {hasScanned && !loading && (
-            <div className="bg-[var(--code-bg)] border border-[var(--border)] p-6 sm:p-8 rounded-3xl shadow-[var(--shadow)] animate-in fade-in slide-in-from-bottom-4 duration-300 w-full space-y-6">
+            <div className="bg-[var(--code-bg)] border border-[var(--border)] p-4 rounded-3xl shadow-[var(--shadow)] animate-in fade-in slide-in-from-bottom-4 duration-300 w-full space-y-4">
               
-              {/* EDITAR SOLO EL NOMBRE DEL PLATO */}
+              {/* Nombre del plato */}
               <div className="space-y-1">
-                <span className="text-xs font-bold text-amber-500 uppercase tracking-widest flex items-center gap-1">
-                  <Edit2 className="w-3 h-3" /> ¿Es correcto el nombre del plato?
+                <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-1">
+                  <Edit2 className="w-2.5 h-2.5" /> ¿Nombre correcto?
                 </span>
                 <input 
                   type="text"
                   value={dishName}
                   onChange={(e) => setDishName(e.target.value)}
-                  className="w-full bg-[var(--bg)] border border-[var(--border)] text-xl font-black text-[var(--text-h)] rounded-xl px-3 py-2 outline-none focus:border-[var(--accent)]"
+                  className="w-full bg-[var(--bg)] border border-[var(--border)] text-lg font-black text-[var(--text-h)] rounded-xl px-3 py-2 outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
-              {/* MARCADORES VISUALES DE MACROS DE LA IA */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-                
-                <div className="bg-[var(--bg)] p-4 rounded-2xl border border-[var(--border)] shadow-sm">
-                  <Flame className="w-6 h-6 mx-auto text-red-500 mb-2" />
-                  <span className="block text-2xl font-black text-[var(--text-h)]">{macros.calories}</span>
-                  <span className="text-xs text-[var(--text)] font-semibold uppercase tracking-wider">Kcal</span>
+              {/* TILE DE CALORÍAS PRINCIPAL */}
+              <div className="bg-[var(--bg)] p-3.5 rounded-2xl border border-[var(--border)] shadow-sm flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Flame className="w-5 h-5 text-red-500" />
+                  <span className="text-xs text-[var(--text)] font-bold uppercase tracking-wider">Calorías Totales</span>
                 </div>
-
-                <div className="bg-[var(--bg)] p-4 rounded-2xl border border-[var(--border)] shadow-sm">
-                  <Beef className="w-6 h-6 mx-auto text-orange-400 mb-2" />
-                  <span className="block text-2xl font-black text-[var(--text-h)]">{macros.protein}g</span>
-                  <span className="text-xs text-[var(--text)] font-semibold uppercase tracking-wider">Proteína</span>
-                </div>
-
-                <div className="bg-[var(--bg)] p-4 rounded-2xl border border-[var(--border)] shadow-sm">
-                  <Wheat className="w-6 h-6 mx-auto text-blue-400 mb-2" />
-                  <span className="block text-2xl font-black text-[var(--text-h)]">{macros.carbs}g</span>
-                  <span className="text-xs text-[var(--text)] font-semibold uppercase tracking-wider">Carbs</span>
-                </div>
-
-                <div className="bg-[var(--bg)] p-4 rounded-2xl border border-[var(--border)] shadow-sm">
-                  <Nut className="w-6 h-6 mx-auto text-yellow-500 mb-2" />
-                  <span className="block text-2xl font-black text-[var(--text-h)]">{macros.fat}g</span>
-                  <span className="text-xs text-[var(--text)] font-semibold uppercase tracking-wider">Grasa</span>
-                </div>
-
+                <span className="text-2xl font-black text-[var(--text-h)]">{macros.calories} <span className="text-xs font-medium text-gray-400">kcal</span></span>
               </div>
 
-              {/* BOTONES DE ACCIÓN PRINCIPALES */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <button
-                  onClick={handleResetScan}
-                  className="sm:col-span-1 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-h)] font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition hover:bg-[var(--border)] shadow-sm text-sm"
-                >
-                  <RotateCcw className="w-4 h-4" /> VOLVER A ESCANEAR
-                </button>
+              {/* LISTA COMPACTA DE MACROS */}
+              <div className="flex flex-col gap-2">
+                <MacroInput 
+                  icon={<Beef className="w-4 h-4 text-orange-400" />} 
+                  label="Proteína" 
+                  value={macros.protein} 
+                  onChange={(val) => updateMacro('protein', val)} 
+                />
+                <MacroInput 
+                  icon={<Wheat className="w-4 h-4 text-blue-400" />} 
+                  label="Carbs" 
+                  value={macros.carbs} 
+                  onChange={(val) => updateMacro('carbs', val)} 
+                />
+                <MacroInput 
+                  icon={<Nut className="w-4 h-4 text-yellow-500" />} 
+                  label="Grasa" 
+                  value={macros.fat} 
+                  onChange={(val) => updateMacro('fat', val)} 
+                />
+              </div>
 
+              {/* Botones de acción principales */}
+              <div className="flex flex-col gap-2 pt-1">
                 <button
                   onClick={handleConfirmAndSave}
                   disabled={saving}
-                  className="sm:col-span-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 transition shadow-md disabled:opacity-50 text-sm uppercase tracking-wide"
+                  className="w-full bg-emerald-600 active:bg-emerald-700 text-white font-black py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-md transition-transform active:scale-[0.99] disabled:opacity-50 text-sm uppercase tracking-wide"
                 >
                   {saving ? <RefreshCw className="animate-spin w-4 h-4" /> : <Check className="w-4 h-4" />}
                   {saving ? "Registrando..." : "CONFIRMAR Y GUARDAR"}
+                </button>
+                <button
+                  onClick={handleResetScan}
+                  className="w-full border border-[var(--border)] bg-[var(--bg)] text-[var(--text-h)] font-bold py-3 rounded-xl flex items-center justify-center gap-2 shadow-sm active:bg-[var(--border)] text-xs"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> VOLVER A ESCANEAR
                 </button>
               </div>
 
@@ -258,9 +298,9 @@ export default function Scanner() {
       </main>
 
       {/* Footer */}
-      <footer className="text-center pt-4 border-t border-[var(--border)] mt-auto">
-        <p className="text-xs text-[var(--text)] font-medium">
-          Desarrollado por un Dev Fit 🔥
+      <footer className="text-center pt-3 border-t border-[var(--border)] mt-auto">
+        <p className="text-[10px] text-[var(--text)] opacity-60 font-medium">
+          MealScan AI 🔥
         </p>
       </footer>
     </div>

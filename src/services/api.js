@@ -3,10 +3,10 @@ import { supabase } from './supabaseClient';
 // 1. Limpiamos la URL base añadiendo el /api que definiste en Express
 
 //Ruta para vercel
-const API_URL = 'https://back-contador-calorias.vercel.app/api'; 
+//const API_URL = 'https://back-contador-calorias.vercel.app/api'; 
 
 //Ruta para pruebas en local
-//const API_URL = 'http://localhost:5000/api';
+const API_URL = 'http://localhost:5000/api';
 
 const getAuthHeaders = async () => {
   const { data: { session } } = await supabase.auth.getSession();
