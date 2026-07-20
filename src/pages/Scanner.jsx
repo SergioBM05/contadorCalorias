@@ -53,6 +53,7 @@ export default function Scanner() {
 
   // Guardamos los datos devueltos por la IA
   const [dishName, setDishName] = useState("");
+  const [contextNote, setContextNote] = useState("");
   const [macros, setMacros] = useState({ calories: 0, protein: 0, carbs: 0, fat: 0 });
   const [hasScanned, setHasScanned] = useState(false); 
 
@@ -72,7 +73,7 @@ export default function Scanner() {
     if (!image) return;
     setLoading(true);
     try {
-      const data = await apiService.scanMeal(image);
+      const data = await apiService.scanMeal(image, contextNote);
       
       setDishName(data.dish || "Plato Escaneado");
       setMacros({
@@ -134,22 +135,25 @@ export default function Scanner() {
   return (
     <div className="w-full min-h-screen flex flex-col px-4 pb-6 text-left font-sans max-w-md mx-auto">
 
-      {/* Header (Simplificado para móvil) */}
-      <header className="py-4 border-b border-[var(--border)] flex flex-col gap-2">
-        <div className="flex items-center justify-between">
+      {/* Header alineado con el resto de pantallas */}
+      <header className="py-4 flex flex-col gap-3">
+        <div className="flex items-center justify-between bg-[var(--code-bg)] border border-[var(--border)] p-3 rounded-2xl">
           <button
             onClick={() => navigate("/")}
-            className="p-2.5 bg-[var(--text-h)] text-[var(--bg)] hover:opacity-90 rounded-full shadow-md transition-transform active:scale-95 flex items-center justify-center"
+            className="p-2.5 border border-[var(--border)] rounded-xl bg-[var(--bg)] hover:bg-[var(--border)] transition"
           >
-            <MoveLeft className="w-5 h-5" />
+            <MoveLeft className="w-4 h-4" />
           </button>
+          <span className="text-sm font-black tracking-tight uppercase flex items-center gap-2 text-[var(--text-h)]">
+            <Sparkles className="w-4 h-4 text-[var(--accent)]" /> MealScan AI
+          </span>
           <div className="flex items-center gap-1.5 bg-[var(--accent-bg)] border border-[var(--accent-border)] text-[var(--accent)] px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider">
             <Sparkles className="w-3.5 h-3.5" />
             IA 100%
           </div>
         </div>
-        <div>
-          <h1 className="!my-0 font-black tracking-tight text-2xl bg-gradient-to-r from-[var(--text-h)] to-[var(--accent)] bg-clip-text text-transparent">
+        <div className="px-1">
+          <h1 className="!my-0 font-black tracking-tight text-2xl text-[var(--text-h)]">
             MEALSCAN AI
           </h1>
           <p className="text-xs text-[var(--text)] opacity-80">
@@ -197,14 +201,23 @@ export default function Scanner() {
           />
 
           {image && !hasScanned && (
-            <button
-              onClick={handleScan}
-              disabled={loading}
-              className="w-full bg-[var(--accent)] text-white font-black py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-md active:scale-[0.99] transition-transform disabled:opacity-50 text-sm tracking-wide"
-            >
-              {loading ? <RefreshCw className="animate-spin w-4 h-4" /> : <Flame className="w-4 h-4" />}
-              {loading ? "ANALIZANDO COMPOSICIÓN..." : "ANALIZAR CALORÍAS"}
-            </button>
+            <div className="space-y-2">
+              <textarea
+                rows={3}
+                value={contextNote}
+                onChange={(e) => setContextNote(e.target.value)}
+                placeholder="Añade contexto útil: tipo de plato, ingredientes, si es una ración grande o pequeña, si lleva salsa, etc."
+                className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text-h)] outline-none focus:border-[var(--accent)]"
+              />
+              <button
+                onClick={handleScan}
+                disabled={loading}
+                className="w-full bg-[var(--accent)] text-white font-black py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-md active:scale-[0.99] transition-transform disabled:opacity-50 text-sm tracking-wide"
+              >
+                {loading ? <RefreshCw className="animate-spin w-4 h-4" /> : <Flame className="w-4 h-4" />}
+                {loading ? "ANALIZANDO COMPOSICIÓN..." : "ANALIZAR CALORÍAS"}
+              </button>
+            </div>
           )}
         </div>
 

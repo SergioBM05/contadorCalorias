@@ -189,6 +189,7 @@ export default function Evolucion() {
     : userProfileWeight 
       ? `${userProfileWeight} kg` 
       : "Sin datos";
+  const targetWeightDisplay = userProfile?.weight_goal != null ? `${userProfile.weight_goal} kg` : "Sin meta";
 
   if (isLoading) {
     return (
@@ -212,6 +213,11 @@ export default function Evolucion() {
              <Scale className="w-4 h-4 text-[var(--accent)]"/>
              <span className="text-xs font-bold">{latestWeightDisplay}</span>
           </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-4 py-3 text-sm flex items-center justify-between">
+          <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Meta de peso</span>
+          <span className="font-black text-[var(--text-h)]">{targetWeightDisplay}</span>
         </div>
 
         {/* GRID */}

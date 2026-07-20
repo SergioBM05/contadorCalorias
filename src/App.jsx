@@ -7,9 +7,10 @@ import Auth from './pages/Auth';
 import { RefreshCw } from 'lucide-react';
 import Profile from './pages/profile';
 import Historial from './pages/Historial';
-import Navbar from './pages/Navbar'; // 
+import Navbar from './pages/Navbar';
 import { Toaster } from 'sonner';
 import Evolucion from './pages/Evolucion';
+import Dieta from './pages/Dieta';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -26,6 +27,8 @@ export default function App() {
       profile.height_cm != null &&
       profile.activity_level &&
       profile.fitness_goal &&
+      profile.weight_goal != null &&
+      profile.weight_goal !== '' &&
       profile.calories_target != null &&
       profile.protein_target != null &&
       profile.carbs_target != null &&
@@ -46,7 +49,7 @@ export default function App() {
         // Buscamos si el usuario ya completó sus datos físicos en user_profiles
         const { data } = await supabase
           .from('user_profiles')
-          .select('gender, age, weight_kg, height_cm, activity_level, fitness_goal, calories_target, protein_target, carbs_target, fat_target')
+          .select('gender, age, weight_kg, height_cm, activity_level, fitness_goal, weight_goal, calories_target, protein_target, carbs_target, fat_target')
           .eq('user_id', currentSession.user.id)
           .maybeSingle(); // Usa maybeSingle para que no rompa si da vacío
 
@@ -134,6 +137,11 @@ export default function App() {
            <Route
             path='/evolucion'
             element={session && hasProfile ? <Evolucion /> : <Navigate to="/auth" replace />}
+          />
+
+          <Route
+            path='/dieta'
+            element={session && hasProfile ? <Dieta /> : <Navigate to="/auth" replace />}
           />
 
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, BarChart2, Calendar, User, Plus } from 'lucide-react';
+import { Home, BarChart2, Calendar, User, Plus, ChefHat } from 'lucide-react';
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -54,11 +54,24 @@ export default function Navbar() {
             <span className="text-[10px] mt-0.5">Evolución</span>
           </button>
 
+          {/* Planner de dieta */}
+          <button
+            onClick={() => navigate('/dieta')}
+            className={`flex flex-col items-center justify-center p-2 rounded-full transition-all active:scale-90 ${
+              isActive('/dieta')
+                ? 'text-[var(--accent)] font-bold'
+                : 'text-[var(--text)] opacity-60 hover:opacity-100'
+            }`}
+          >
+            <ChefHat className="w-5 h-5" />
+            <span className="text-[10px] mt-0.5">Dieta</span>
+          </button>
+
           {/* Perfil / Ajustes */}
           <button
             onClick={() => navigate('/profile')}
             className={`flex flex-col items-center justify-center p-2 rounded-full transition-all active:scale-90 ${
-              isActive('/perfil') 
+              isActive('/profile') 
                 ? 'text-[var(--accent)] font-bold' 
                 : 'text-[var(--text)] opacity-60 hover:opacity-100'
             }`}

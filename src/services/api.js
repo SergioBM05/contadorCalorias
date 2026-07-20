@@ -2,11 +2,11 @@ import { supabase } from './supabaseClient';
 
 // 1. Limpiamos la URL base añadiendo el /api que definiste en Express
 
-//Ruta para vercel
-const API_URL = 'https://back-contador-calorias.vercel.app/api'; 
-
 //Ruta para pruebas en local
-//const API_URL = 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+//Ruta para vercel (opcional)
+//const API_URL = 'https://back-contador-calorias.vercel.app/api';
 
 const getAuthHeaders = async () => {
   const { data: { session } } = await supabase.auth.getSession();
@@ -18,18 +18,33 @@ const getAuthHeaders = async () => {
 
 export const apiService = {
   // Enviar imagen en Base64 para analizar
-  scanMeal: async (imageBase64) => {
+  scanMeal: async (imageBase64, contextNote = '') => {
     const headers = await getAuthHeaders();
-    // Queda como: /api/meals/scan 🚀
     const response = await fetch(`${API_URL}/meals/scan`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ imageBase64 }),
+      body: JSON.stringify({ imageBase64, contextNote }),
     });
     
     if (!response.ok) {
       const errData = await response.json();
       throw new Error(errData.error || 'Error al escanear el plato');
+    }
+    return response.json();
+  },
+
+  // Generar una receta ajustada con Gemini según los macros restantes
+  generateDietPlan: async ({ prompt, mealType, remaining }) => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_URL}/meals/plan`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ prompt, mealType, remaining }),
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || 'Error al generar la receta');
     }
     return response.json();
   },

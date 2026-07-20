@@ -18,6 +18,7 @@ export default function Profile() {
   const [age, setAge] = useState("");
   const [weight, setWeight] = useState("");
   const [height, setHeight] = useState("");
+  const [weightGoal, setWeightGoal] = useState("");
   const [activity, setActivity] = useState("moderado");
   const [goal, setGoal] = useState("mantener");
 
@@ -38,6 +39,7 @@ export default function Profile() {
           setAge(data.age || "");
           setWeight(data.weight_kg || "");
           setHeight(data.height_cm || "");
+          setWeightGoal(data.weight_goal ?? "");
           setActivity(data.activity_level || "moderado");
           setGoal(data.fitness_goal || "mantener");
         }
@@ -87,7 +89,7 @@ export default function Profile() {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!age || !weight || !height) return toast.warning("Rellena todos los campos físicos");
+    if (!age || !weight || !height || !weightGoal) return toast.warning("Rellena todos los campos físicos y tu peso objetivo");
     setSaving(true);
 
     const updatePromise = async () => {
@@ -99,6 +101,7 @@ export default function Profile() {
         height_cm: parseInt(height),
         activity_level: activity,
         fitness_goal: goal,
+        weight_goal: parseFloat(weightGoal),
         ...targets 
       });
     };
@@ -199,6 +202,15 @@ export default function Profile() {
                 <input type="number" value={height} onChange={(e) => setHeight(e.target.value)} className="w-full bg-[var(--bg)] border border-[var(--border)] rounded-xl py-2.5 pl-9 pr-2 text-xs font-bold text-[var(--text-h)] outline-none focus:border-[var(--accent)]" required />
               </div>
             </div>
+          </div>
+
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] p-3">
+            <label className="block text-xs font-black uppercase mb-2 text-[var(--text)] tracking-wider">Peso Objetivo (kg)</label>
+            <div className="relative">
+              <Scale className="absolute left-3 top-3 w-3.5 h-3.5 text-[var(--text)]" />
+              <input type="number" step="0.1" value={weightGoal} onChange={(e) => setWeightGoal(e.target.value)} className="w-full bg-[var(--bg)] border border-[var(--border)] rounded-xl py-2.5 pl-9 pr-2 text-xs font-bold text-[var(--text-h)] outline-none focus:border-[var(--accent)]" required />
+            </div>
+            <p className="text-[10px] text-[var(--text)] mt-2">Tu meta de peso se usará en el dashboard, la evolución y el planner de dieta.</p>
           </div>
 
           {/* NIVEL DE ACTIVIDAD */}

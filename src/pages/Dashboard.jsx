@@ -23,7 +23,7 @@ export default function Dashboard() {
       // 1. Traer objetivos de usuario
       const { data: profileData, error: profileError } = await supabase
         .from("user_profiles")
-        .select("calories_target, protein_target, carbs_target, fat_target")
+        .select("calories_target, protein_target, carbs_target, fat_target, weight_goal")
         .eq("user_id", user.id)
         .single();
 
@@ -149,6 +149,12 @@ export default function Dashboard() {
             </span>
             <h1 className="text-2xl md:text-3xl font-black text-[var(--text-h)] tracking-tight">Mi Progreso</h1>
           </div>
+          {targets?.weight_goal && (
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-[var(--text)]">
+              <span>Meta</span>
+              <span>{targets.weight_goal} kg</span>
+            </div>
+          )}
         </div>
 
         {/* BALANCE ENERGÉTICO NETO (Sustituye a Combustible Restante) */}

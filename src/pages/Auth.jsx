@@ -18,6 +18,7 @@ export default function Auth({ onProfileCompleted }) {
   const [age, setAge] = useState('');
   const [weight, setWeight] = useState('');
   const [height, setHeight] = useState('');
+  const [weightGoal, setWeightGoal] = useState('');
   const [activity, setActivity] = useState('moderado');
   const [goal, setGoal] = useState('mantener');
 
@@ -76,6 +77,7 @@ export default function Auth({ onProfileCompleted }) {
   const handleFinalSignUp = async (e) => {
     e.preventDefault();
     if (!email || !password) return toast.error('Introduce tu email y contraseña');
+    if (!weightGoal || parseFloat(weightGoal) <= 0) return toast.error('Indica tu peso objetivo en kg');
     setLoading(true);
 
     const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
@@ -96,6 +98,7 @@ export default function Auth({ onProfileCompleted }) {
           height_cm: parseInt(height),
           activity_level: activity,
           fitness_goal: goal,
+          weight_goal: parseFloat(weightGoal),
           ...targets
         });
 
@@ -247,6 +250,11 @@ export default function Auth({ onProfileCompleted }) {
               <div>
                 <label className="block text-xs font-bold uppercase mb-1 text-[var(--text-h)]">Estatura</label>
                 <input type="number" placeholder="En centímetros (cm)" value={height} onChange={(e) => setHeight(e.target.value)} className="w-full bg-[var(--bg)] border border-[var(--border)] rounded-xl py-3 px-4 text-sm text-[var(--text-h)] outline-none focus:border-[var(--accent)]" required />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase mb-1 text-[var(--text-h)]">Peso Objetivo (kg)</label>
+                <input type="number" step="0.1" placeholder="Ej: 72.5" value={weightGoal} onChange={(e) => setWeightGoal(e.target.value)} className="w-full bg-[var(--bg)] border border-[var(--border)] rounded-xl py-3 px-4 text-sm text-[var(--text-h)] outline-none focus:border-[var(--accent)]" required />
               </div>
             </div>
 

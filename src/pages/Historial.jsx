@@ -72,17 +72,17 @@ export default function Historial() {
       {/* Header */}
       <header className="py-6 border-b border-[var(--border)] flex items-center gap-4">
         <button
-          onClick={() => navigate("/dashboard")}
+          onClick={() => navigate("/")}
           className="p-3 bg-[var(--text-h)] text-[var(--bg)] hover:opacity-90 rounded-full shadow-lg transition-transform active:scale-95 flex items-center justify-center"
         >
           <MoveLeft className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="!my-0 font-black tracking-tight text-2xl sm:text-3xl bg-gradient-to-r from-[var(--text-h)] to-[var(--accent)] bg-clip-text text-transparent">
-            HISTORIAL DINÁMICO
+          <h1 className="!my-0 font-black tracking-tight text-2xl sm:text-3xl text-[var(--text-h)]">
+            Historial
           </h1>
           <p className="text-xs sm:text-sm text-[var(--text)] opacity-80">
-            Navega por los días en tu calendario fitness para analizar tus macros.
+            Revisa lo que has comido y cómo ha evolucionado tu semana.
           </p>
         </div>
       </header>
@@ -140,7 +140,7 @@ export default function Historial() {
               <div className="w-full space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                 
                 {/* Panel resumido de Macros del Día */}
-                <div className="bg-[var(--code-bg)] border border-[var(--border)] rounded-3xl p-6 shadow-[var(--shadow)] flex flex-col md:flex-row gap-6 items-center justify-between">
+                <div className="bg-[var(--code-bg)] border border-[var(--border)] rounded-3xl p-5 shadow-[var(--shadow)] flex flex-col md:flex-row gap-5 items-center justify-between">
                   <div className="text-center md:text-left">
                     <span className="text-xs font-bold text-[var(--accent)] uppercase tracking-wider block mb-1">
                       Resumen Diario del
