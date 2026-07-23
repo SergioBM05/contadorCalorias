@@ -1,14 +1,20 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../services/supabaseClient";
-import { Flame, Activity, Sparkles, Dumbbell, Plus, X, Save } from "lucide-react";
+import { apiService } from "../services/api";
+import { Flame, Activity, Sparkles, Dumbbell, Plus, X, Save, CalendarDays, Clock, Utensils } from "lucide-react";
 import { toast } from 'sonner';
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [meals, setMeals] = useState([]);
   const [targets, setTargets] = useState(null); 
   const [workoutCalories, setWorkoutCalories] = useState(0); 
   const [loading, setLoading] = useState(true);
   const [animate, setAnimate] = useState(false);
+  const [historyGroups, setHistoryGroups] = useState([]);
+  const [selectedHistoryGroup, setSelectedHistoryGroup] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
 
   // ESTADOS PARA EL MODAL DE ENTRENAMIENTO
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
@@ -65,8 +71,54 @@ export default function Dashboard() {
     }
   };
 
+  const fetchHistorySummary = async () => {
+    try {
+      const data = await apiService.getAllMealsHistory();
+      const groups = data.reduce((acc, meal) => {
+        const dateObj = new Date(meal.created_at);
+        const dateKey = dateObj.toISOString().split('T')[0];
+
+        if (!acc[dateKey]) {
+          acc[dateKey] = {
+            id: dateKey,
+            dayName: dateObj.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', ''),
+            dayNum: dateObj.toLocaleDateString('es-ES', { day: '2-digit' }),
+            dateLabel: dateObj.toLocaleDateString('es-ES', {
+              weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+            }),
+            meals: [],
+            totalCalories: 0,
+            totalProtein: 0,
+            totalCarbs: 0,
+            totalFat: 0,
+          };
+        }
+
+        acc[dateKey].meals.push(meal);
+        acc[dateKey].totalCalories += meal.calories || 0;
+        acc[dateKey].totalProtein += meal.protein || 0;
+        acc[dateKey].totalCarbs += meal.carbs || 0;
+        acc[dateKey].totalFat += meal.fat || 0;
+        return acc;
+      }, {});
+
+      const sortedGroups = Object.values(groups).sort((a, b) => b.id.localeCompare(a.id));
+      setHistoryGroups(sortedGroups);
+      setSelectedHistoryGroup(sortedGroups[0] || null);
+    } catch (err) {
+      console.error("Error cargando historial:", err.message);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   useEffect(() => {
-    fetchDashboardData();
+    const loadData = async () => {
+      await fetchDashboardData();
+      await fetchHistorySummary();
+    };
+
+    void loadData();
   }, []);
 
   // Función para guardar el entrenamiento en Supabase
@@ -184,6 +236,102 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-xs font-black tracking-wider text-gray-400 uppercase flex items-center gap-1.5">
+              <CalendarDays className="w-4 h-4" /> Historial por días
+            </h3>
+            <button
+              type="button"
+              onClick={() => navigate('/historial')}
+              className="text-[10px] font-bold text-[var(--accent)]"
+            >
+              Ver todo
+            </button>
+          </div>
+
+          {historyLoading ? (
+            <p className="text-xs text-gray-400 italic pl-1">Cargando historial...</p>
+          ) : historyGroups.length === 0 ? (
+            <p className="text-xs text-gray-400 italic pl-1">Aún no tienes entradas en tu historial.</p>
+          ) : (
+            <>
+              <div className="flex gap-3 overflow-x-auto pb-2">
+                {historyGroups.map((group) => {
+                  const isSelected = selectedHistoryGroup?.id === group.id;
+                  return (
+                    <button
+                      key={group.id}
+                      type="button"
+                      onClick={() => setSelectedHistoryGroup(group)}
+                      className={`flex-shrink-0 w-20 p-3 rounded-2xl border text-center transition-all ${
+                        isSelected
+                          ? 'bg-[var(--accent)] text-white border-[var(--accent)] shadow-lg'
+                          : 'bg-[var(--card-bg)] border-[var(--border)] text-[var(--text-h)]'
+                      }`}
+                    >
+                      <p className="text-[10px] font-black uppercase tracking-wider opacity-80">{group.dayName}</p>
+                      <p className="text-xl font-black mt-1">{group.dayNum}</p>
+                      <p className="text-[10px] font-semibold mt-1">{group.totalCalories} kcal</p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedHistoryGroup && (
+                <div className="bg-[var(--card-bg)] border border-[var(--border)] p-4 rounded-3xl space-y-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-wider text-[var(--accent)]">Resumen del día</p>
+                      <h4 className="text-base font-black text-[var(--text-h)] capitalize">
+                        {selectedHistoryGroup.dayName} {selectedHistoryGroup.dayNum}
+                      </h4>
+                    </div>
+                    <div className="inline-flex items-center gap-2 rounded-full bg-[var(--accent-bg)] px-3 py-1.5 text-xs font-black text-[var(--accent)]">
+                      <Flame className="w-3.5 h-3.5" />
+                      {selectedHistoryGroup.totalCalories} kcal
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] p-2">
+                      <p className="text-[10px] font-bold text-gray-400">Proteína</p>
+                      <p className="text-sm font-black text-[var(--text-h)]">{selectedHistoryGroup.totalProtein}g</p>
+                    </div>
+                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] p-2">
+                      <p className="text-[10px] font-bold text-gray-400">Carbs</p>
+                      <p className="text-sm font-black text-[var(--text-h)]">{selectedHistoryGroup.totalCarbs}g</p>
+                    </div>
+                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] p-2">
+                      <p className="text-[10px] font-bold text-gray-400">Grasas</p>
+                      <p className="text-sm font-black text-[var(--text-h)]">{selectedHistoryGroup.totalFat}g</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-gray-400 px-1">
+                      <Utensils className="w-3.5 h-3.5" />
+                      Platos del día
+                    </div>
+                    {selectedHistoryGroup.meals.map((meal) => (
+                      <div key={meal.id} className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5">
+                        <div>
+                          <p className="text-sm font-black text-[var(--text-h)]">{meal.dish}</p>
+                          <div className="flex items-center gap-1 text-[10px] text-gray-400 mt-0.5">
+                            <Clock className="w-3 h-3" />
+                            {new Date(meal.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                        <span className="text-xs font-black text-[var(--text-h)]">{meal.calories} kcal</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {/* ENERGÍA EN DOS BLOQUES */}
