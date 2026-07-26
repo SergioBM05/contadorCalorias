@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../services/supabaseClient";
 import { apiService } from "../services/api";
-import { Flame, Activity, Sparkles, Dumbbell, Plus, X, Save, CalendarDays, Clock, Utensils } from "lucide-react";
+import { Flame, Activity, Sparkles, Dumbbell, Plus, X, Save, CalendarDays } from "lucide-react";
 import { toast } from 'sonner';
 
 export default function Dashboard() {
@@ -104,7 +104,11 @@ export default function Dashboard() {
 
       const sortedGroups = Object.values(groups).sort((a, b) => b.id.localeCompare(a.id));
       setHistoryGroups(sortedGroups);
-      setSelectedHistoryGroup(sortedGroups[0] || null);
+
+      // Si no hay ningún día seleccionado previamente, seleccionamos el primero (el día más reciente/HOY)
+      if (!selectedHistoryGroup && sortedGroups.length > 0) {
+        setSelectedHistoryGroup(sortedGroups[0]);
+      }
     } catch (err) {
       console.error("Error cargando historial:", err.message);
     } finally {
@@ -148,7 +152,8 @@ export default function Dashboard() {
       setShowWorkoutModal(false);
       
       // Recargar datos para actualizar la interfaz
-      fetchDashboardData();
+      await fetchDashboardData();
+      await fetchHistorySummary();
     } catch (err) {
       console.error(err);
       toast.error("No se pudo guardar el entrenamiento");
@@ -166,7 +171,11 @@ export default function Dashboard() {
     );
   }
 
-  const totals = meals.reduce((acc, meal) => {
+  // DINÁMICO: Si hay un grupo seleccionado en el historial usamos sus comidas, de lo contrario fallback a las comidas de hoy
+  const activeMeals = selectedHistoryGroup ? selectedHistoryGroup.meals : meals;
+
+  // CÁLCULO DE TOTALES BASADO EN EL DÍA SELECCIONADO
+  const totals = activeMeals.reduce((acc, meal) => {
     acc.calories += meal.calories || 0;
     acc.protein += meal.protein || 0;
     acc.carbs += meal.carbs || 0;
@@ -209,7 +218,51 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* BALANCE ENERGÉTICO NETO (Sustituye a Combustible Restante) */}
+        {/* HISTORIAL POR DÍAS (SITUADO ARRIBA PARA SELECCIONAR FECHA) */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-xs font-black tracking-wider text-gray-400 uppercase flex items-center gap-1.5">
+              <CalendarDays className="w-4 h-4" /> Historial por días
+            </h3>
+            <button
+              type="button"
+              onClick={() => navigate('/historial')}
+              className="text-[10px] font-bold text-[var(--accent)] hover:underline"
+            >
+              Ver todo
+            </button>
+          </div>
+
+          {historyLoading ? (
+            <p className="text-xs text-gray-400 italic pl-1">Cargando historial...</p>
+          ) : historyGroups.length === 0 ? (
+            <p className="text-xs text-gray-400 italic pl-1">Aún no tienes entradas en tu historial.</p>
+          ) : (
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
+              {historyGroups.map((group) => {
+                const isSelected = selectedHistoryGroup?.id === group.id;
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => setSelectedHistoryGroup(group)}
+                    className={`flex-shrink-0 w-20 p-3 rounded-2xl border text-center transition-all ${
+                      isSelected
+                        ? 'bg-[var(--accent)] text-white border-[var(--accent)] shadow-lg scale-105'
+                        : 'bg-[var(--card-bg)] border-[var(--border)] text-[var(--text-h)] hover:border-[var(--accent)]'
+                    }`}
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-wider opacity-80">{group.dayName}</p>
+                    <p className="text-xl font-black mt-1">{group.dayNum}</p>
+                    <p className="text-[10px] font-semibold mt-1">{group.totalCalories} kcal</p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* BALANCE ENERGÉTICO NETO */}
         <div className={`transition-all duration-700 delay-150 transform ${animate ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
           <div className="bg-[var(--accent-bg)] border border-[var(--accent-border)] p-4 md:p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-inner">
             <div className="space-y-0.5">
@@ -225,7 +278,7 @@ export default function Dashboard() {
                   ? "bg-green-500/10 text-green-400 border border-green-500/20" 
                   : "bg-orange-500/10 text-orange-400 border border-orange-500/20"
               }`}>
-                {isDeficit ? "🔥 Deficit Activo" : "💪 Superávit Activo"}
+                {isDeficit ? "🔥 Déficit Activo" : "💪 Superávit Activo"}
               </span>
               
               {/* Desglose de macros restantes con emojis */}
@@ -236,102 +289,6 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-        </div>
-
-        <div className="space-y-3">
-          <div className="flex items-center justify-between px-1">
-            <h3 className="text-xs font-black tracking-wider text-gray-400 uppercase flex items-center gap-1.5">
-              <CalendarDays className="w-4 h-4" /> Historial por días
-            </h3>
-            <button
-              type="button"
-              onClick={() => navigate('/historial')}
-              className="text-[10px] font-bold text-[var(--accent)]"
-            >
-              Ver todo
-            </button>
-          </div>
-
-          {historyLoading ? (
-            <p className="text-xs text-gray-400 italic pl-1">Cargando historial...</p>
-          ) : historyGroups.length === 0 ? (
-            <p className="text-xs text-gray-400 italic pl-1">Aún no tienes entradas en tu historial.</p>
-          ) : (
-            <>
-              <div className="flex gap-3 overflow-x-auto pb-2">
-                {historyGroups.map((group) => {
-                  const isSelected = selectedHistoryGroup?.id === group.id;
-                  return (
-                    <button
-                      key={group.id}
-                      type="button"
-                      onClick={() => setSelectedHistoryGroup(group)}
-                      className={`flex-shrink-0 w-20 p-3 rounded-2xl border text-center transition-all ${
-                        isSelected
-                          ? 'bg-[var(--accent)] text-white border-[var(--accent)] shadow-lg'
-                          : 'bg-[var(--card-bg)] border-[var(--border)] text-[var(--text-h)]'
-                      }`}
-                    >
-                      <p className="text-[10px] font-black uppercase tracking-wider opacity-80">{group.dayName}</p>
-                      <p className="text-xl font-black mt-1">{group.dayNum}</p>
-                      <p className="text-[10px] font-semibold mt-1">{group.totalCalories} kcal</p>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {selectedHistoryGroup && (
-                <div className="bg-[var(--card-bg)] border border-[var(--border)] p-4 rounded-3xl space-y-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-wider text-[var(--accent)]">Resumen del día</p>
-                      <h4 className="text-base font-black text-[var(--text-h)] capitalize">
-                        {selectedHistoryGroup.dayName} {selectedHistoryGroup.dayNum}
-                      </h4>
-                    </div>
-                    <div className="inline-flex items-center gap-2 rounded-full bg-[var(--accent-bg)] px-3 py-1.5 text-xs font-black text-[var(--accent)]">
-                      <Flame className="w-3.5 h-3.5" />
-                      {selectedHistoryGroup.totalCalories} kcal
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] p-2">
-                      <p className="text-[10px] font-bold text-gray-400">Proteína</p>
-                      <p className="text-sm font-black text-[var(--text-h)]">{selectedHistoryGroup.totalProtein}g</p>
-                    </div>
-                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] p-2">
-                      <p className="text-[10px] font-bold text-gray-400">Carbs</p>
-                      <p className="text-sm font-black text-[var(--text-h)]">{selectedHistoryGroup.totalCarbs}g</p>
-                    </div>
-                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg)] p-2">
-                      <p className="text-[10px] font-bold text-gray-400">Grasas</p>
-                      <p className="text-sm font-black text-[var(--text-h)]">{selectedHistoryGroup.totalFat}g</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-gray-400 px-1">
-                      <Utensils className="w-3.5 h-3.5" />
-                      Platos del día
-                    </div>
-                    {selectedHistoryGroup.meals.map((meal) => (
-                      <div key={meal.id} className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-3 py-2.5">
-                        <div>
-                          <p className="text-sm font-black text-[var(--text-h)]">{meal.dish}</p>
-                          <div className="flex items-center gap-1 text-[10px] text-gray-400 mt-0.5">
-                            <Clock className="w-3 h-3" />
-                            {new Date(meal.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        </div>
-                        <span className="text-xs font-black text-[var(--text-h)]">{meal.calories} kcal</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
         </div>
 
         {/* ENERGÍA EN DOS BLOQUES */}
@@ -359,7 +316,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* QUEMADAS CON ACCIÓN EDITAR/AAÑADIR */}
+          {/* QUEMADAS CON ACCIÓN EDITAR/AÑADIR */}
           <div className="bg-[var(--card-bg)] border border-[var(--border)] p-5 rounded-3xl shadow-[var(--shadow)] flex flex-col justify-between gap-2">
             <div className="flex justify-between items-start">
               <div className="space-y-0.5">
@@ -413,16 +370,16 @@ export default function Dashboard() {
           })}
         </div>
 
-        {/* HISTORIAL COMIDAS */}
+        {/* HISTORIAL COMIDAS DEL DÍA SELECCIONADO */}
         <div className="space-y-3">
           <h3 className="text-xs font-black tracking-wider text-gray-400 uppercase flex items-center gap-1.5 pl-1">
-            <Activity className="w-4 h-4" /> Comidas Registradas Hoy
+            <Activity className="w-4 h-4" /> Comidas Registradas {selectedHistoryGroup ? `(${selectedHistoryGroup.dayName} ${selectedHistoryGroup.dayNum})` : 'Hoy'}
           </h3>
           <div className="space-y-2">
-            {meals.length === 0 ? (
-              <p className="text-xs text-gray-400 italic pl-1 py-2">Aún no has registrado alimentos hoy.</p>
+            {activeMeals.length === 0 ? (
+              <p className="text-xs text-gray-400 italic pl-1 py-2">Aún no has registrado alimentos este día.</p>
             ) : (
-              meals.map((meal) => (
+              activeMeals.map((meal) => (
                 <div key={meal.id} className="bg-[var(--card-bg)] border border-[var(--border)] p-3.5 rounded-2xl flex justify-between items-center gap-3">
                   <div className="space-y-0.5 min-w-0">
                     <p className="font-black text-[var(--text-h)] capitalize text-xs md:text-sm truncate">{meal.dish}</p>
