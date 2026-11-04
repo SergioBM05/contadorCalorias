@@ -1,20 +1,30 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Flame, Activity, Sparkles, Dumbbell, Plus, Save, CalendarDays, Trash2, Camera, Loader2 } from 'lucide-react';
+import { Activity, Dumbbell, Plus, Save, CalendarDays, Camera, Loader2, PenLine, History, Flame } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiService } from '../services/api';
-import { groupMealsByDay, sumByDay, startOfDayISO, localDateKey } from '../utils/dates';
+import { groupMealsByDay, groupBySlot, calculateStreak, sumByDay, startOfDayISO, localDateKey } from '../utils/dates';
 import { percentage } from '../utils/nutrition';
 import { inputClass } from '../utils/styles';
 import { Card, FullScreenLoader, Modal } from '../components/ui';
+import CalorieRing from '../components/CalorieRing';
+import MealActions from '../components/MealActions';
 
 const WORKOUT_DAYS = 60;
 
 const MACROS = [
-  { key: 'protein', targetKey: 'protein_target', label: 'Proteínas', color: 'bg-rose-500', icon: '🍗' },
-  { key: 'carbs', targetKey: 'carbs_target', label: 'Carbohidratos', color: 'bg-blue-500', icon: '🍚' },
-  { key: 'fat', targetKey: 'fat_target', label: 'Grasas', color: 'bg-amber-500', icon: '🥑' },
+  { key: 'protein', targetKey: 'protein_target', label: 'Proteína', color: 'bg-rose-500', text: 'text-rose-500' },
+  { key: 'carbs', targetKey: 'carbs_target', label: 'Carbos', color: 'bg-blue-500', text: 'text-blue-500' },
+  { key: 'fat', targetKey: 'fat_target', label: 'Grasas', color: 'bg-amber-500', text: 'text-amber-500' },
 ];
+
+const greeting = () => {
+  const h = new Date().getHours();
+  if (h < 6) return 'Buenas noches';
+  if (h < 13) return 'Buenos días';
+  if (h < 21) return 'Buenas tardes';
+  return 'Buenas noches';
+};
 
 const ProgressBar = ({ pct, color = 'bg-(--accent)', animate }) => (
   <div className="w-full bg-(--bg) h-2 border border-(--border) rounded-full overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
@@ -35,7 +45,6 @@ export default function Dashboard() {
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
   const [formWorkoutCalories, setFormWorkoutCalories] = useState('');
   const [submittingWorkout, setSubmittingWorkout] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
 
   const loadData = useCallback(async () => {
     const [profileRes, historyRes, workoutsRes] = await Promise.allSettled([
@@ -69,7 +78,9 @@ export default function Dashboard() {
   }, [loadData]);
 
   const dayGroups = useMemo(() => groupMealsByDay(meals, { includeToday: true }), [meals]);
+  const streak = useMemo(() => calculateStreak(meals), [meals]);
   const selectedDay = dayGroups.find((g) => g.id === selectedDayId) || dayGroups[0];
+  const slots = useMemo(() => groupBySlot(selectedDay?.meals), [selectedDay]);
 
   const handleSaveWorkout = async (e) => {
     e.preventDefault();
@@ -91,26 +102,8 @@ export default function Dashboard() {
     }
   };
 
-  const handleDeleteMeal = (meal) => {
-    toast(`¿Eliminar "${meal.dish}"?`, {
-      action: {
-        label: 'Eliminar',
-        onClick: async () => {
-          setDeletingId(meal.id);
-          try {
-            await apiService.deleteMeal(meal.id);
-            setMeals((prev) => prev.filter((m) => m.id !== meal.id));
-            toast.success('Plato eliminado');
-          } catch (err) {
-            toast.error(err.message);
-          } finally {
-            setDeletingId(null);
-          }
-        },
-      },
-      cancel: { label: 'Cancelar', onClick: () => {} },
-    });
-  };
+  const onMealUpdated = (updated) => setMeals((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+  const onMealDeleted = (id) => setMeals((prev) => prev.filter((m) => m.id !== id));
 
   if (loading) return <FullScreenLoader message="Sincronizando tus macros..." />;
 
@@ -132,205 +125,195 @@ export default function Dashboard() {
     fat: selectedDay.totalFat,
   };
   const workoutCalories = workoutsByDay[selectedDay.id] || 0;
-
-  // Balance neto = consumido − objetivo − ejercicio del MISMO día
-  const netBalance = Math.round(totals.calories - targets.calories_target - workoutCalories);
+  // El ejercicio amplía el margen del día: objetivo efectivo = objetivo + quemadas
+  const effectiveTarget = targets.calories_target + workoutCalories;
+  const netBalance = Math.round(totals.calories - effectiveTarget);
   const isDeficit = netBalance < 0;
-  const caloriesPct = percentage(totals.calories, targets.calories_target);
-  const remaining = Object.fromEntries(
-    MACROS.map((m) => [m.key, Math.max(Math.round(targets[m.targetKey] - totals[m.key]), 0)])
-  );
   const dayLabel = selectedDay.isToday ? 'hoy' : `${selectedDay.dayName} ${selectedDay.dayNum}`;
 
   return (
     <div className="min-h-screen bg-(--bg) text-(--text) px-4 py-6 md:py-12 transition-colors duration-300">
-      <div className="max-w-xl mx-auto space-y-6 md:space-y-8">
+      <div className="max-w-xl mx-auto space-y-6">
 
         {/* TOP BAR */}
-        <div className="flex justify-between items-center">
-          <div className="space-y-0.5">
-            <span className="text-[10px] md:text-xs font-black tracking-widest text-(--accent) uppercase flex items-center gap-1">
-              <Sparkles className="w-3 h-3" /> {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
+        <div className="flex justify-between items-center gap-3">
+          <div className="space-y-0.5 min-w-0">
+            <span className="text-[10px] md:text-xs font-black tracking-widest text-(--accent) uppercase">
+              {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
             </span>
-            <h1 className="text-2xl md:text-3xl font-black text-(--text-h) tracking-tight">Mi Progreso</h1>
+            <h1 className="text-2xl md:text-3xl font-black text-(--text-h) tracking-tight">{greeting()} 👋</h1>
           </div>
-          {targets.weight_goal && (
-            <div className="inline-flex items-center gap-2 rounded-full border border-(--border) bg-(--card-bg) px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-(--text)">
-              <span>Meta</span>
-              <span className="text-(--text-h)">{targets.weight_goal} kg</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {streak > 0 && (
+              <div
+                className="inline-flex items-center gap-1 rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1.5 text-xs font-black text-orange-500"
+                title={`${streak} ${streak === 1 ? 'día seguido' : 'días seguidos'} registrando comidas`}
+              >
+                <Flame className="w-3.5 h-3.5" /> {streak}
+              </div>
+            )}
+            {targets.weight_goal && (
+              <div className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-(--border) bg-(--card-bg) px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-(--text)">
+                Meta <span className="text-(--text-h)">{targets.weight_goal} kg</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* SELECTOR DE DÍA */}
-        <div className="space-y-3">
+        <div className="space-y-2">
           <div className="flex items-center justify-between px-1">
             <h2 className="text-xs font-black tracking-wider text-(--text) uppercase flex items-center gap-1.5">
-              <CalendarDays className="w-4 h-4" /> Historial por días
+              <CalendarDays className="w-4 h-4" /> Días
             </h2>
             <button type="button" onClick={() => navigate('/historial')} className="text-[10px] font-bold text-(--accent) hover:underline">
-              Ver todo
+              Ver historial
             </button>
           </div>
 
-          <div className="flex gap-3 overflow-x-auto pb-2 pt-1 scrollbar-none snap-x">
+          <div className="flex gap-2.5 overflow-x-auto pb-2 pt-1 scrollbar-none snap-x">
             {dayGroups.map((group) => {
               const isSelected = selectedDay.id === group.id;
+              const pct = percentage(group.totalCalories, targets.calories_target);
               return (
                 <button
                   key={group.id}
                   type="button"
                   onClick={() => setSelectedDayId(group.id)}
                   aria-pressed={isSelected}
-                  className={`snap-start shrink-0 w-20 p-3 rounded-2xl border text-center transition-all ${
+                  className={`snap-start shrink-0 w-[4.5rem] p-2.5 rounded-2xl border text-center transition-all ${
                     isSelected
                       ? 'bg-(--accent) text-white border-(--accent) shadow-lg'
                       : 'bg-(--card-bg) border-(--border) text-(--text-h) hover:border-(--accent)'
                   }`}
                 >
                   <p className="!text-center text-[10px] font-black uppercase tracking-wider opacity-80">{group.isToday ? 'Hoy' : group.dayName}</p>
-                  <p className="!text-center text-xl font-black mt-1">{group.dayNum}</p>
-                  <p className="!text-center text-[10px] font-semibold mt-1">{group.totalCalories} kcal</p>
+                  <p className="!text-center text-xl font-black">{group.dayNum}</p>
+                  <div className={`h-1 rounded-full mt-1 overflow-hidden ${isSelected ? 'bg-white/30' : 'bg-(--border)'}`}>
+                    <div className={`h-full rounded-full ${isSelected ? 'bg-white' : 'bg-(--accent)'}`} style={{ width: `${pct}%` }} />
+                  </div>
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* BALANCE ENERGÉTICO NETO */}
-        <div className={`transition-all duration-700 ${animate ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
-          <div className="bg-(--accent-bg) border border-(--accent-border) p-4 md:p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-0.5">
-              <p className="text-xs font-bold text-(--accent)">⚖️ Balance energético neto ({dayLabel})</p>
-              <p className="text-3xl md:text-4xl font-black text-(--text-h) tracking-tighter">
-                {netBalance > 0 ? '+' : ''}{netBalance.toLocaleString('es-ES')}{' '}
-                <span className="text-sm md:text-lg font-medium text-(--text) opacity-70">kcal</span>
-              </p>
-            </div>
+        {/* RESUMEN: ANILLO + MACROS */}
+        <Card className={`p-5 transition-all duration-700 ${animate ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
+          <div className="flex flex-col sm:flex-row items-center gap-6">
+            <CalorieRing consumed={totals.calories} target={effectiveTarget} animate={animate} />
 
-            <div className="flex flex-col sm:items-end gap-2">
-              <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider text-center border ${
-                isDeficit ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20'
-              }`}>
-                {isDeficit ? '🔥 Déficit' : '💪 Superávit'}
-              </span>
-              <div className="flex gap-3 text-[11px] font-mono pt-1 sm:pt-0" title="Macros restantes">
-                <span>🍗 <b className="text-(--text-h)">{remaining.protein}g</b></span>
-                <span>🍚 <b className="text-(--text-h)">{remaining.carbs}g</b></span>
-                <span>🥑 <b className="text-(--text-h)">{remaining.fat}g</b></span>
+            <div className="flex-1 w-full space-y-3">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="!text-center text-[10px] font-black uppercase text-(--text)">Objetivo</p>
+                  <p className="!text-center text-sm font-black text-(--text-h)">{targets.calories_target}</p>
+                </div>
+                <div>
+                  <p className="!text-center text-[10px] font-black uppercase text-(--text)">Comido</p>
+                  <p className="!text-center text-sm font-black text-(--text-h)">{totals.calories}</p>
+                </div>
+                <div>
+                  <p className="!text-center text-[10px] font-black uppercase text-(--text)">Ejercicio</p>
+                  <p className="!text-center text-sm font-black text-purple-500">+{workoutCalories}</p>
+                </div>
               </div>
+
+              {MACROS.map((macro) => {
+                const current = Math.round(totals[macro.key]);
+                const target = targets[macro.targetKey];
+                return (
+                  <div key={macro.key} className="space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className={`font-black ${macro.text}`}>{macro.label}</span>
+                      <span className="font-mono text-(--text-h)">
+                        <b>{current}</b><span className="text-(--text)"> / {target}g</span>
+                      </span>
+                    </div>
+                    <ProgressBar pct={percentage(current, target)} color={macro.color} animate={animate} />
+                  </div>
+                );
+              })}
             </div>
           </div>
-        </div>
 
-        {/* ENERGÍA */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Card className="p-5 flex flex-col justify-between gap-3">
-            <div className="flex justify-between items-start">
-              <div className="space-y-0.5">
-                <p className="text-xs font-bold text-(--text) flex items-center gap-1.5">
-                  <Flame className="w-4 h-4 text-orange-500" /> Energía de alimentos
-                </p>
-                <p className="text-2xl font-black text-(--text-h) tracking-tight">
-                  {totals.calories} <span className="text-xs font-medium text-(--text)">/ {targets.calories_target} kcal</span>
-                </p>
-              </div>
-              <div className="bg-(--accent-bg) border border-(--accent-border) text-(--accent) font-black text-[10px] px-2 py-0.5 rounded-xl">
-                {caloriesPct}%
-              </div>
-            </div>
-            <ProgressBar pct={caloriesPct} animate={animate} />
-          </Card>
+          <div className="flex items-center justify-between gap-3 mt-5 pt-4 border-t border-(--border)">
+            <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border ${
+              isDeficit ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20'
+            }`}>
+              {isDeficit ? '🔥 Déficit' : '💪 Superávit'} {netBalance > 0 ? '+' : ''}{netBalance.toLocaleString('es-ES')} kcal
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowWorkoutModal(true)}
+              className="px-3 py-1.5 bg-purple-600 text-white rounded-xl hover:bg-purple-700 active:scale-95 transition flex items-center gap-1 text-[11px] font-bold"
+            >
+              <Dumbbell className="w-3.5 h-3.5" /> Ejercicio
+            </button>
+          </div>
+        </Card>
 
-          <Card className="p-5 flex flex-col justify-between gap-2">
-            <div className="flex justify-between items-start">
-              <div className="space-y-0.5">
-                <p className="text-xs font-bold text-(--text) flex items-center gap-1.5">
-                  <Dumbbell className="w-4 h-4 text-purple-500" /> Gasto por ejercicio
-                </p>
-                <p className="text-2xl font-black text-purple-500 tracking-tight">
-                  -{workoutCalories} <span className="text-xs font-medium text-(--text)">kcal {dayLabel}</span>
-                </p>
-              </div>
+        {/* ACCESOS RÁPIDOS */}
+        {selectedDay.isToday && (
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: 'Escanear', icon: Camera, to: '/scanner' },
+              { label: 'Manual', icon: PenLine, to: '/scanner?tab=manual' },
+              { label: 'Repetir', icon: History, to: '/scanner?tab=recent' },
+            ].map(({ label, icon: Icon, to }) => (
               <button
+                key={label}
                 type="button"
-                onClick={() => setShowWorkoutModal(true)}
-                className="p-1.5 bg-purple-600 text-white rounded-xl hover:bg-purple-700 active:scale-95 transition flex items-center gap-1 text-[10px] font-bold shadow-md shadow-purple-900/20"
+                onClick={() => navigate(to)}
+                className="bg-(--card-bg) border border-(--border) rounded-2xl py-3 flex flex-col items-center gap-1 text-xs font-bold text-(--text-h) hover:border-(--accent) hover:text-(--accent) transition"
               >
-                <Plus className="w-3.5 h-3.5" /> Registrar
+                <Icon className="w-4 h-4" /> {label}
               </button>
-            </div>
-            <p className="text-[10px] text-(--text) font-medium">Calorías quemadas que se restan de tu balance.</p>
-          </Card>
-        </div>
+            ))}
+          </div>
+        )}
 
-        {/* MACROS */}
-        <div className="space-y-2.5">
-          {MACROS.map((macro) => {
-            const current = Math.round(totals[macro.key]);
-            const target = targets[macro.targetKey];
-            const pct = percentage(current, target);
-            return (
-              <Card key={macro.key} className="!rounded-2xl p-4 flex flex-col gap-2">
-                <div className="flex justify-between items-center w-full">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base select-none" aria-hidden="true">{macro.icon}</span>
-                    <span className="text-xs md:text-sm font-black text-(--text-h)">{macro.label}</span>
-                    <span className="text-[10px] font-bold text-(--text) bg-(--bg) border border-(--border) px-1.5 py-0.5 rounded-md ml-1">{pct}%</span>
-                  </div>
-                  <div className="text-right text-xs font-mono text-(--text-h)">
-                    <span className="font-black text-sm">{current}g</span>
-                    <span className="text-(--text) font-medium"> / {target}g</span>
-                  </div>
-                </div>
-                <ProgressBar pct={pct} color={macro.color} animate={animate} />
-              </Card>
-            );
-          })}
-        </div>
-
-        {/* COMIDAS DEL DÍA */}
+        {/* COMIDAS DEL DÍA POR FRANJA */}
         <div className="space-y-3">
           <h2 className="text-xs font-black tracking-wider text-(--text) uppercase flex items-center gap-1.5 pl-1">
-            <Activity className="w-4 h-4" /> Comidas registradas ({dayLabel})
+            <Activity className="w-4 h-4" /> Comidas ({dayLabel})
           </h2>
-          <div className="space-y-2">
-            {selectedDay.meals.length === 0 ? (
-              <button
-                type="button"
-                onClick={() => navigate('/scanner')}
-                className="w-full border-2 border-dashed border-(--border) rounded-2xl p-5 text-xs font-bold text-(--text) hover:border-(--accent) hover:text-(--accent) transition flex items-center justify-center gap-2"
-              >
-                <Camera className="w-4 h-4" /> Aún no hay comidas este día. Escanea tu primer plato
-              </button>
-            ) : (
-              selectedDay.meals.map((meal) => (
-                <Card key={meal.id} className="!rounded-2xl p-3.5 flex justify-between items-center gap-3">
-                  <div className="space-y-0.5 min-w-0">
-                    <p className="font-black text-(--text-h) capitalize text-xs md:text-sm truncate">{meal.dish}</p>
-                    <p className="text-[10px] md:text-xs text-(--text) font-mono">
-                      {new Date(meal.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-                      {' · '}P {meal.protein}g · HC {meal.carbs}g · G {meal.fat}g
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-xs font-black text-(--text-h) bg-(--bg) border border-(--border) px-2.5 py-1 rounded-xl whitespace-nowrap">
-                      +{meal.calories} kcal
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteMeal(meal)}
-                      disabled={deletingId === meal.id}
-                      aria-label={`Eliminar ${meal.dish}`}
-                      className="p-1.5 rounded-lg text-(--text) hover:text-red-500 hover:bg-red-500/10 transition disabled:opacity-50"
-                    >
-                      {deletingId === meal.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                </Card>
-              ))
-            )}
-          </div>
+
+          {slots.length === 0 ? (
+            <button
+              type="button"
+              onClick={() => navigate('/scanner')}
+              className="w-full border-2 border-dashed border-(--border) rounded-2xl p-6 text-xs font-bold text-(--text) hover:border-(--accent) hover:text-(--accent) transition flex items-center justify-center gap-2"
+            >
+              <Plus className="w-4 h-4" /> Aún no hay comidas este día. Añade la primera
+            </button>
+          ) : (
+            slots.map((slot) => (
+              <div key={slot.id} className="space-y-1.5">
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-xs font-black text-(--text-h)">{slot.icon} {slot.label}</span>
+                  <span className="text-[10px] font-bold text-(--text)">{slot.calories} kcal</span>
+                </div>
+                {slot.meals.map((meal) => (
+                  <Card key={meal.id} className="!rounded-2xl p-3 flex justify-between items-center gap-3">
+                    <div className="space-y-0.5 min-w-0">
+                      <p className="font-black text-(--text-h) first-letter:uppercase text-sm truncate">{meal.dish}</p>
+                      <p className="text-[10px] md:text-xs text-(--text) font-mono">
+                        {new Date(meal.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                        {' · '}P {meal.protein}g · HC {meal.carbs}g · G {meal.fat}g
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-xs font-black text-(--text-h) bg-(--bg) border border-(--border) px-2 py-1 rounded-xl whitespace-nowrap">
+                        {meal.calories} kcal
+                      </span>
+                      <MealActions meal={meal} onUpdated={onMealUpdated} onDeleted={onMealDeleted} />
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -343,8 +326,15 @@ export default function Dashboard() {
               value={formWorkoutCalories} onChange={(e) => setFormWorkoutCalories(e.target.value)}
               className={`${inputClass} text-base`}
             />
-            <span className="text-[10px] text-(--text) block">Se restará de tu balance neto de hoy.</span>
+            <span className="text-[10px] text-(--text) block">Se suman a tu margen de calorías de hoy.</span>
           </label>
+          <div className="flex gap-2">
+            {[150, 300, 500].map((v) => (
+              <button key={v} type="button" onClick={() => setFormWorkoutCalories(String(v))} className="flex-1 py-1.5 rounded-lg border border-(--border) bg-(--bg) text-xs font-bold text-(--text-h) hover:border-purple-500">
+                {v}
+              </button>
+            ))}
+          </div>
           <button
             type="submit"
             disabled={submittingWorkout}

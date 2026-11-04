@@ -5,11 +5,15 @@ App web (React + Vite + Tailwind v4) para registrar comidas escaneándolas con I
 ## Funcionalidades
 
 - **Registro guiado**: test de 5 pasos (sexo, métricas, actividad, objetivo) que calcula calorías y macros con Mifflin-St Jeor.
-- **Escáner con IA**: haz una foto o sube una imagen; la IA estima calorías y macros y puedes corregirlos antes de guardar (las calorías se reajustan al editar un macro).
-- **Dashboard**: balance energético neto por día (consumo − objetivo − ejercicio), progreso de macros, registro de entrenamientos y borrado de platos.
-- **Historial**: comidas agrupadas por día (zona horaria local).
-- **Evolución**: gráfica de peso con tendencia y meta, y calorías de los últimos 14 días frente a tu objetivo.
-- **Planner de dieta**: la IA propone una receta con pesos exactos ajustada a los macros que te quedan.
+- **Añadir comida** (botón +), con tres modos:
+  - *Escanear*: foto o imagen → la IA estima calorías y macros, muestra su confianza y nota de ración; puedes elegir ración (×0.5–×2) y corregir valores.
+  - *Manual*: nombre y macros a mano (calorías calculadas a partir de los macros si no las pones).
+  - *Recientes*: buscador de tus platos anteriores para repetirlos con un toque.
+- **Dashboard**: anillo de calorías restantes (el ejercicio amplía el margen), macros, racha de días registrando, comidas agrupadas por franja (desayuno/comida/merienda/cena), editar y borrar platos.
+- **Historial**: comidas por día (zona horaria local), buscador de platos y media de los últimos 7 días.
+- **Evolución**: gráfica de peso con tendencia y meta, ritmo en kg/semana y estimación de semanas hasta la meta, lista de registros con borrado, y calorías de los últimos 14 días.
+- **Planner de dieta**: la IA propone una receta con pesos exactos ajustada a los macros que te quedan; se puede registrar como comida.
+- **Tema** claro / oscuro / sistema (en Perfil) y **app instalable** (manifest web).
 
 ## Arquitectura
 
@@ -49,4 +53,4 @@ Scripts: `npm run dev`, `npm run build`, `npm run preview`, `npm run lint`.
 
 - Las imágenes se comprimen en el navegador (máx. 1280 px, JPEG) para no superar el límite de payload de Vercel.
 - Si Supabase tiene activada la confirmación de email, el perfil calculado en el test se guarda localmente y se sincroniza automáticamente en el primer inicio de sesión.
-- Para que el borrado de platos funcione, la tabla `meals` necesita una política RLS de `DELETE` para `auth.uid() = user_id`.
+- Editar y borrar requieren políticas RLS de `UPDATE`/`DELETE` para `auth.uid() = user_id` en `meals` y `DELETE` en `weight_logs`. Si faltan, la app muestra un aviso de "sin permisos".

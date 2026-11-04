@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Save, LogOut, Scale, Ruler, Calendar, Flame, Dumbbell, Utensils, Zap, User, Loader2, Target } from 'lucide-react';
+import { Save, LogOut, Scale, Ruler, Calendar, Flame, Dumbbell, Utensils, Zap, User, Loader2, Target, Sun, Moon, Monitor } from 'lucide-react';
 import { supabase } from '../services/supabaseClient';
 import { apiService } from '../services/api';
 import { ACTIVITY_OPTIONS, buildProfilePayload, calculateTargets, validateBiometrics } from '../utils/nutrition';
 import { PageHeader, Card, FullScreenLoader } from '../components/ui';
+import { getThemePref, setThemePref } from '../utils/theme';
 
 const GOALS = [
   { id: 'perder_grasa', label: 'Perder grasa (definición)', icon: Flame, color: 'text-red-500 bg-red-500/10' },
@@ -38,6 +39,12 @@ export default function Profile() {
   const [weightGoal, setWeightGoal] = useState('');
   const [activity, setActivity] = useState('moderado');
   const [goal, setGoal] = useState('mantener');
+  const [themePref, setThemePrefState] = useState(getThemePref);
+
+  const changeTheme = (pref) => {
+    setThemePrefState(pref);
+    setThemePref(pref);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -112,7 +119,7 @@ export default function Profile() {
           }
         />
 
-        {email && <p className="text-xs text-(--text) px-1 -mt-2 truncate">Sesión iniciada como <b className="text-(--text-h)">{email}</b></p>}
+        {email && <p className="text-xs text-(--text) px-1 truncate">Sesión iniciada como <b className="text-(--text-h)">{email}</b></p>}
 
         <Card className="p-5 sm:p-6">
           <form onSubmit={handleSave} className="flex flex-col gap-5 text-left">
@@ -199,6 +206,28 @@ export default function Profile() {
               {saving ? 'Guardando cambios...' : 'Guardar y actualizar macros'}
             </button>
           </form>
+        </Card>
+
+        {/* APARIENCIA */}
+        <Card className="p-5">
+          <span className="block text-xs font-black uppercase mb-2 text-(--text) tracking-wider">Apariencia</span>
+          <div className="grid grid-cols-3 gap-2 bg-(--bg) p-1 rounded-xl border border-(--border)" role="radiogroup" aria-label="Tema">
+            {[
+              { id: 'light', label: 'Claro', icon: Sun },
+              { id: 'dark', label: 'Oscuro', icon: Moon },
+              { id: 'system', label: 'Sistema', icon: Monitor },
+            ].map(({ id, label, icon: Icon }) => (
+              <button
+                key={id} type="button" role="radio" aria-checked={themePref === id} onClick={() => changeTheme(id)}
+                className={`py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${themePref === id ? 'bg-(--accent) text-white shadow-sm' : 'text-(--text) hover:text-(--text-h)'}`}
+              >
+                <Icon className="w-3.5 h-3.5" /> {label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-(--text) mt-3">
+            Consejo: desde el navegador del móvil puedes usar «Añadir a pantalla de inicio» para instalar la app.
+          </p>
         </Card>
       </div>
     </div>

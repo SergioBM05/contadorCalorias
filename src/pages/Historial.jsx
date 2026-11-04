@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { toast } from 'sonner';
-import { Calendar, Flame, RefreshCw, Utensils, Clock, CalendarDays, Trash2, Loader2 } from 'lucide-react';
+import { Calendar, Flame, RefreshCw, Utensils, Clock, CalendarDays, Search } from 'lucide-react';
 import { apiService } from '../services/api';
-import { groupMealsByDay } from '../utils/dates';
+import { groupMealsByDay, lastNDays } from '../utils/dates';
 import { PageHeader, Card } from '../components/ui';
+import MealActions from '../components/MealActions';
+import { inputClass } from '../utils/styles';
 
 export default function Historial() {
   const [meals, setMeals] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [deletingId, setDeletingId] = useState(null);
+  const [query, setQuery] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -23,29 +24,20 @@ export default function Historial() {
     return () => { cancelled = true; };
   }, [reloadKey]);
 
-  const groups = useMemo(() => groupMealsByDay(meals), [meals]);
+  // Búsqueda por nombre de plato: solo quedan los días con coincidencias
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return groupMealsByDay(q ? meals.filter((m) => m.dish?.toLowerCase().includes(q)) : meals);
+  }, [meals, query]);
+  const weekAvg = useMemo(() => {
+    const week = new Set(lastNDays(7));
+    const last7 = groupMealsByDay(meals).filter((g) => week.has(g.id));
+    return last7.length ? Math.round(last7.reduce((s, g) => s + g.totalCalories, 0) / last7.length) : 0;
+  }, [meals]);
   const selected = groups.find((g) => g.id === selectedId) || groups[0];
 
-  const handleDelete = (meal) => {
-    toast(`¿Eliminar "${meal.dish}"?`, {
-      action: {
-        label: 'Eliminar',
-        onClick: async () => {
-          setDeletingId(meal.id);
-          try {
-            await apiService.deleteMeal(meal.id);
-            setMeals((prev) => prev.filter((m) => m.id !== meal.id));
-            toast.success('Plato eliminado');
-          } catch (err) {
-            toast.error(err.message);
-          } finally {
-            setDeletingId(null);
-          }
-        },
-      },
-      cancel: { label: 'Cancelar', onClick: () => {} },
-    });
-  };
+  const onMealUpdated = (updated) => setMeals((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+  const onMealDeleted = (id) => setMeals((prev) => prev.filter((m) => m.id !== id));
 
   return (
     <div className="w-full min-h-screen bg-(--bg) px-4 py-6 md:py-10">
@@ -57,6 +49,21 @@ export default function Historial() {
             <span className="text-[10px] font-black uppercase text-(--text) px-2">{groups.length} días</span>
           )}
         />
+
+        {!loading && !error && meals.length > 0 && (
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-3 w-4 h-4 text-(--text)" />
+              <input type="search" placeholder="Buscar un plato..." value={query} onChange={(e) => { setQuery(e.target.value); setSelectedId(null); }} className={`${inputClass} pl-10`} />
+            </div>
+            {weekAvg > 0 && (
+              <div className="bg-(--card-bg) border border-(--border) rounded-xl px-4 py-2 flex items-center justify-between sm:justify-start gap-3">
+                <span className="text-[10px] font-black uppercase text-(--text)">Media últimos 7 días</span>
+                <span className="text-sm font-black text-(--text-h)">{weekAvg.toLocaleString('es-ES')} kcal</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-(--text)">
@@ -73,8 +80,8 @@ export default function Historial() {
         ) : groups.length === 0 ? (
           <Card className="p-12 text-center">
             <Calendar className="w-12 h-12 mx-auto text-(--text) opacity-40 mb-4" />
-            <p className="!text-center text-base font-bold text-(--text-h) mb-1">No hay registros guardados</p>
-            <p className="!text-center text-sm max-w-xs mx-auto text-(--text)">Tus platos escaneados aparecerán aquí organizados por día.</p>
+            <p className="!text-center text-base font-bold text-(--text-h) mb-1">{query ? 'Ningún plato coincide con la búsqueda' : 'No hay registros guardados'}</p>
+            <p className="!text-center text-sm max-w-xs mx-auto text-(--text)">{query ? 'Prueba con otro nombre.' : 'Tus platos aparecerán aquí organizados por día.'}</p>
           </Card>
         ) : (
           <>
@@ -99,7 +106,7 @@ export default function Historial() {
                       <span className="text-[10px] font-black uppercase tracking-widest opacity-75">{group.isToday ? 'Hoy' : group.dayName}</span>
                       <span className="text-2xl font-black tracking-tighter">{group.dayNum}</span>
                       <span className="text-[9px] font-bold uppercase opacity-60">{group.monthName}</span>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${isSelected ? 'bg-(--bg)/20' : 'bg-red-500/10 text-red-500'}`}>
+                      <span className={`text-[9px] font-bold px-1 py-0.5 rounded-md whitespace-nowrap ${isSelected ? 'bg-(--bg)/20' : 'bg-red-500/10 text-red-500'}`}>
                         {group.totalCalories} kcal
                       </span>
                     </button>
@@ -114,7 +121,7 @@ export default function Historial() {
                 <Card className="p-5 flex flex-col md:flex-row gap-5 items-center justify-between">
                   <div>
                     <span className="text-xs font-bold text-(--accent) uppercase tracking-wider block mb-1">Resumen del día</span>
-                    <h2 className="text-xl font-black text-(--text-h) capitalize tracking-tight">{selected.dateLabel}</h2>
+                    <h2 className="text-xl font-black text-(--text-h) first-letter:uppercase tracking-tight">{selected.dateLabel}</h2>
                   </div>
 
                   <div className="flex flex-wrap items-center justify-center gap-4">
@@ -152,21 +159,15 @@ export default function Historial() {
                       <Card key={meal.id} className="!rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:border-(--accent) transition">
                         <div className="flex items-start justify-between gap-3 min-w-0">
                           <div className="space-y-1 min-w-0">
-                            <h3 className="font-black text-(--text-h) text-base tracking-tight capitalize truncate">{meal.dish}</h3>
+                            <h3 className="font-black text-(--text-h) text-base tracking-tight first-letter:uppercase truncate">{meal.dish}</h3>
                             <div className="flex items-center gap-1.5 text-xs text-(--text) opacity-70 font-semibold">
                               <Clock className="w-3.5 h-3.5" />
                               {new Date(meal.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(meal)}
-                            disabled={deletingId === meal.id}
-                            aria-label={`Eliminar ${meal.dish}`}
-                            className="sm:hidden p-1.5 rounded-lg text-(--text) hover:text-red-500 hover:bg-red-500/10 transition"
-                          >
-                            {deletingId === meal.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                          </button>
+                          <div className="sm:hidden">
+                            <MealActions meal={meal} onUpdated={onMealUpdated} onDeleted={onMealDeleted} />
+                          </div>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
@@ -174,15 +175,9 @@ export default function Historial() {
                           <span className="bg-(--bg) border border-(--border) text-(--text-h) px-2.5 py-1.5 rounded-xl"><span className="text-rose-500">P:</span> {meal.protein}g</span>
                           <span className="bg-(--bg) border border-(--border) text-(--text-h) px-2.5 py-1.5 rounded-xl"><span className="text-blue-500">C:</span> {meal.carbs}g</span>
                           <span className="bg-(--bg) border border-(--border) text-(--text-h) px-2.5 py-1.5 rounded-xl"><span className="text-amber-500">G:</span> {meal.fat}g</span>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(meal)}
-                            disabled={deletingId === meal.id}
-                            aria-label={`Eliminar ${meal.dish}`}
-                            className="hidden sm:block p-1.5 rounded-lg text-(--text) hover:text-red-500 hover:bg-red-500/10 transition"
-                          >
-                            {deletingId === meal.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                          </button>
+                          <div className="hidden sm:block">
+                            <MealActions meal={meal} onUpdated={onMealUpdated} onDeleted={onMealDeleted} />
+                          </div>
                         </div>
                       </Card>
                     ))}

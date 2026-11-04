@@ -83,3 +83,39 @@ export const lastNDays = (n) =>
     d.setDate(d.getDate() - (n - 1 - i));
     return localDateKey(d);
   });
+
+// ---- Franjas del día (no hay columna de tipo de comida: se deduce por la hora) ----
+export const MEAL_SLOTS = [
+  { id: 'desayuno', label: 'Desayuno', icon: '🌅', until: 11 },
+  { id: 'comida', label: 'Comida', icon: '🍽️', until: 16 },
+  { id: 'merienda', label: 'Merienda', icon: '🥪', until: 20 },
+  { id: 'cena', label: 'Cena', icon: '🌙', until: 24 },
+];
+
+export const slotForDate = (date) => {
+  const h = new Date(date).getHours();
+  return MEAL_SLOTS.find((s) => h < s.until) || MEAL_SLOTS.at(-1);
+};
+
+/** Agrupa las comidas de un día por franja, omitiendo las vacías. */
+export const groupBySlot = (meals = []) =>
+  MEAL_SLOTS.map((slot) => {
+    const items = meals.filter((m) => slotForDate(m.created_at).id === slot.id);
+    return { ...slot, meals: items, calories: items.reduce((s, m) => s + (Number(m.calories) || 0), 0) };
+  }).filter((s) => s.meals.length > 0);
+
+/**
+ * Días consecutivos con al menos una comida registrada.
+ * Si hoy aún no hay registros, la racha cuenta hasta ayer (no se rompe a primera hora).
+ */
+export const calculateStreak = (meals = []) => {
+  const days = new Set(meals.filter((m) => m?.created_at).map((m) => localDateKey(m.created_at)));
+  const cursor = new Date();
+  if (!days.has(localDateKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+  let streak = 0;
+  while (days.has(localDateKey(cursor))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+};

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Scale, Zap, Plus, Save, TrendingDown, TrendingUp, Target, LineChart as LineIcon, Loader2 } from 'lucide-react';
+import { Scale, Zap, Plus, Save, TrendingDown, TrendingUp, Target, LineChart as LineIcon, Loader2, Trash2 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, ReferenceLine,
 } from 'recharts';
@@ -56,14 +56,12 @@ export default function Evolucion() {
       const userId = session?.user?.id;
       if (!userId) return;
 
-      const [profileData, weightRes, mealsRes] = await Promise.all([
+      const [profileData, weightData, mealsRes] = await Promise.all([
         apiService.getProfile(),
-        supabase
-          .from('weight_logs')
-          .select('date, weight_kg')
-          .eq('user_id', userId)
-          .order('date', { ascending: false })
-          .limit(WEIGHT_LOGS_LIMIT),
+        apiService.getWeightLogs(WEIGHT_LOGS_LIMIT).catch((err) => {
+          console.error('Error cargando peso:', err);
+          return [];
+        }),
         supabase
           .from('meals')
           .select('calories, created_at')
@@ -71,12 +69,11 @@ export default function Evolucion() {
           .gte('created_at', startOfDayISO(CONSUMPTION_DAYS - 1)),
       ]);
 
-      if (weightRes.error) console.error('Error cargando peso:', weightRes.error);
       if (mealsRes.error) console.error('Error cargando comidas:', mealsRes.error);
 
       setProfile(profileData);
       // Pedimos los más recientes y los ordenamos cronológicamente para la gráfica
-      setWeightLogs((weightRes.data || []).slice().reverse());
+      setWeightLogs(weightData.slice().reverse());
       setCaloriesByDay(sumByDay(mealsRes.data || [], 'calories'));
     } catch (err) {
       console.error('Error general en carga:', err);
@@ -131,6 +128,33 @@ export default function Evolucion() {
   const goalWeight = profile?.weight_goal != null ? Number(profile.weight_goal) : null;
   const toGoal = latestWeight != null && goalWeight != null ? Number((goalWeight - latestWeight).toFixed(1)) : null;
   const caloriesTarget = Number(profile?.calories_target) || null;
+
+  // Ritmo medio en kg/semana entre el primer y el último registro (mín. 7 días de diferencia)
+  const spanDays = weightSeries.length > 1
+    ? (new Date(weightSeries.at(-1).date) - new Date(weightSeries[0].date)) / 864e5
+    : 0;
+  const weeklyRate = spanDays >= 7 && weightChange != null ? Number(((weightChange / spanDays) * 7).toFixed(2)) : null;
+  const weeksToGoal = weeklyRate && toGoal && Math.sign(weeklyRate) === Math.sign(toGoal)
+    ? Math.ceil(Math.abs(toGoal / weeklyRate))
+    : null;
+
+  const handleDeleteLog = (log) => {
+    toast(`¿Eliminar el registro del ${shortDate(log.date)} (${log.weight_kg} kg)?`, {
+      action: {
+        label: 'Eliminar',
+        onClick: async () => {
+          try {
+            await apiService.deleteWeightLog(log.id);
+            setWeightLogs((prev) => prev.filter((l) => l.id !== log.id));
+            toast.success('Registro eliminado');
+          } catch (err) {
+            toast.error(err.message);
+          }
+        },
+      },
+      cancel: { label: 'Cancelar', onClick: () => {} },
+    });
+  };
 
   const handleSaveWeight = async (e) => {
     e.preventDefault();
@@ -208,7 +232,7 @@ export default function Evolucion() {
             label="Cambio"
             icon={weightChange != null && weightChange > 0 ? TrendingUp : TrendingDown}
             value={weightChange != null ? `${weightChange > 0 ? '+' : ''}${weightChange} kg` : '—'}
-            sub={weightChange != null ? `desde ${shortDate(weightSeries[0].date)}` : 'Registra más pesos'}
+            sub={weeklyRate != null ? `${weeklyRate > 0 ? '+' : ''}${weeklyRate} kg/semana${weeksToGoal ? ` · meta en ~${weeksToGoal} sem` : ''}` : weightChange != null ? `desde ${shortDate(weightSeries[0].date)}` : 'Registra más pesos'}
           />
           <Stat label="Consumo hoy" icon={Zap} value={`${Math.round(todayCalories).toLocaleString('es-ES')} kcal`}
             sub={caloriesTarget ? `de ${caloriesTarget.toLocaleString('es-ES')} kcal` : null} />
@@ -246,6 +270,37 @@ export default function Evolucion() {
                 </ResponsiveContainer>
               </div>
             )}
+            {weightLogs.length > 0 && (
+              <div className="space-y-1.5">
+                <h3 className="text-[10px] font-black uppercase tracking-wider text-(--text)">Últimos registros</h3>
+                <ul className="divide-y divide-(--border) border border-(--border) rounded-2xl overflow-hidden max-h-64 overflow-y-auto">
+                  {[...weightLogs].reverse().slice(0, 15).map((log, i, arr) => {
+                    const prev = arr[i + 1];
+                    const diff = prev ? Number((log.weight_kg - prev.weight_kg).toFixed(1)) : null;
+                    return (
+                      <li key={log.id ?? log.date} className="flex items-center justify-between gap-3 px-3 py-2 bg-(--bg) text-xs">
+                        <div className="min-w-0">
+                          <span className="font-bold text-(--text-h)">{shortDate(log.date)}</span>
+                          {log.notes && <span className="text-(--text) ml-2 truncate">· {log.notes}</span>}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {log.fat_percentage != null && <span className="text-(--text)">{log.fat_percentage}% grasa</span>}
+                          {diff != null && diff !== 0 && (
+                            <span className={`font-bold ${diff < 0 ? 'text-emerald-500' : 'text-orange-500'}`}>{diff > 0 ? '+' : ''}{diff}</span>
+                          )}
+                          <span className="font-black text-(--text-h)">{log.weight_kg} kg</span>
+                          {log.id && (
+                            <button type="button" onClick={() => handleDeleteLog(log)} aria-label={`Eliminar registro del ${shortDate(log.date)}`} className="p-1 rounded-md text-(--text) hover:text-red-500 hover:bg-red-500/10">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
           </Card>
 
           {/* CONSUMO */}
@@ -269,10 +324,10 @@ export default function Evolucion() {
             ) : (
               <div className="w-full h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={consumptionSeries} margin={{ top: 15, right: 15, left: -20, bottom: 5 }}>
+                  <BarChart data={consumptionSeries} margin={{ top: 15, right: 15, left: -8, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                     <XAxis dataKey="dateDisplay" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text)' }} interval="preserveStartEnd" />
-                    <YAxis width={40} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text)' }}
+                    <YAxis width={44} tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1).replace(".0", "")}k` : v)} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text)' }}
                       domain={[0, (max) => Math.ceil(Math.max(max, caloriesTarget || 0) * 1.1)]} />
                     <Tooltip content={<ChartTooltip unit="kcal" />} cursor={{ fill: 'var(--accent-bg)' }} />
                     {caloriesTarget > 100 && <ReferenceLine y={caloriesTarget} stroke="#ef4444" strokeDasharray="4 4" strokeWidth={1.5} />}

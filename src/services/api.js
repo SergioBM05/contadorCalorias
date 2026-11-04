@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient';
 // Configurable por entorno: en local define VITE_API_URL=http://localhost:5000/api en .env.local
 const API_URL = (import.meta.env.VITE_API_URL || 'https://back-contador-calorias.vercel.app/api').replace(/\/$/, '');
 
+const MAX_PAYLOAD_CHARS = 4_000_000;
 const REQUEST_TIMEOUT_MS = 60_000; // La IA puede tardar, pero no dejamos la petición colgada para siempre
 
 const getAuthHeaders = async () => {
@@ -17,11 +18,18 @@ const request = async (path, { method = 'GET', body, fallbackError }) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
+  const payload = body ? JSON.stringify(body) : undefined;
+  // Vercel rechaza >4.5 MB con un 413 sin cabeceras CORS: el navegador lo ve como "fallo de red"
+  if (payload && payload.length > MAX_PAYLOAD_CHARS) {
+    clearTimeout(timer);
+    throw new Error('La imagen es demasiado grande. Prueba con otra foto o recórtala.');
+  }
+
   try {
     const response = await fetch(`${API_URL}${path}`, {
       method,
       headers: await getAuthHeaders(),
-      body: body ? JSON.stringify(body) : undefined,
+      body: payload,
       signal: controller.signal,
     });
 
@@ -35,7 +43,7 @@ const request = async (path, { method = 'GET', body, fallbackError }) => {
     return data;
   } catch (err) {
     if (err.name === 'AbortError') throw new Error('El servidor tardó demasiado en responder. Inténtalo de nuevo.', { cause: err });
-    if (err instanceof TypeError) throw new Error('No se pudo conectar con el servidor. Revisa tu conexión.', { cause: err });
+    if (err instanceof TypeError) throw new Error('No se pudo conectar con el servidor (conexión caída o el servidor cortó la petición). Inténtalo de nuevo.', { cause: err });
     throw err;
   } finally {
     clearTimeout(timer);
@@ -124,6 +132,44 @@ export const apiService = {
       .select('id');
     if (error) throw new Error(error.message);
     if (!data?.length) throw new Error('No se pudo eliminar el plato (sin permisos)');
+  },
+
+  updateMeal: async (mealId, { dish, calories, protein, carbs, fat }) => {
+    const userId = await getUserId();
+    const { data, error } = await supabase
+      .from('meals')
+      .update({ dish: dish.trim(), calories, protein, carbs, fat })
+      .eq('id', mealId)
+      .eq('user_id', userId)
+      .select()
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error('No se pudo editar el plato (sin permisos)');
+    return data;
+  },
+
+  getWeightLogs: async (limit = 60) => {
+    const userId = await getUserId();
+    const { data, error } = await supabase
+      .from('weight_logs')
+      .select('id, date, weight_kg, fat_percentage, notes')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .limit(limit);
+    if (error) throw new Error(error.message);
+    return data || [];
+  },
+
+  deleteWeightLog: async (logId) => {
+    const userId = await getUserId();
+    const { data, error } = await supabase
+      .from('weight_logs')
+      .delete()
+      .eq('id', logId)
+      .eq('user_id', userId)
+      .select('id');
+    if (error) throw new Error(error.message);
+    if (!data?.length) throw new Error('No se pudo eliminar el registro (sin permisos)');
   },
 
   getWorkoutsSince: async (sinceISO) => {

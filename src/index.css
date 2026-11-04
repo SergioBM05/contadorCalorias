@@ -1,5 +1,8 @@
 @import 'tailwindcss';
 
+/* El tema se decide con data-theme en <html> (claro/oscuro/sistema, ver utils/theme.js) */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
 :root {
   --text: #524c5a;
   --text-h: #0f0d13;
@@ -15,7 +18,7 @@
 
   --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 
-  color-scheme: light dark;
+  color-scheme: light;
   font-family: var(--sans);
   background-color: var(--bg);
   color: var(--text);
@@ -23,8 +26,8 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+:root[data-theme='dark'] {
+    color-scheme: dark;
     --text: #9ca3af;
     --text-h: #f3f4f6;
     --bg: #090a0f;
@@ -36,7 +39,6 @@
     --accent-border: rgba(192, 132, 252, 0.28);
     --accent-glow: rgba(192, 132, 252, 0.2);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
-  }
 }
 
 body {

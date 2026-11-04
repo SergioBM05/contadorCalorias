@@ -15,7 +15,7 @@ const PROMPT_SUGGESTIONS = ['Pollo, arroz y verduras', 'Tortilla de patatas salu
 
 /** La IA puede devolver los macros en distintas formas; normalizamos si existen. */
 const extractMacros = (recipe) => {
-  const src = recipe?.macros || recipe?.totals || recipe?.nutrition || recipe;
+  const src = recipe?.calculatedMacros || recipe?.macros || recipe?.totals || recipe?.nutrition || recipe;
   const calories = Number(src?.calories ?? src?.kcal);
   if (!Number.isFinite(calories) || calories <= 0) return null;
   return {

@@ -7,6 +7,8 @@ import { isProfileComplete, readPendingProfile, clearPendingProfile } from './ut
 import { FullScreenLoader } from './components/ui';
 import Navbar from './components/Navbar';
 import Auth from './pages/Auth';
+import ErrorBoundary from './components/ErrorBoundary';
+import { useResolvedTheme, watchSystemTheme } from './utils/theme';
 
 // Code-splitting: cada página se descarga solo cuando se visita (recharts pesa mucho)
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -65,6 +67,9 @@ export default function App() {
     }
   }, []);
 
+  const theme = useResolvedTheme();
+  useEffect(() => watchSystemTheme(), []);
+
   useEffect(() => {
     // onAuthStateChange emite INITIAL_SESSION al suscribirse, no hace falta getSession aparte.
     // Diferimos la consulta para no bloquear el callback de Supabase (recomendación oficial).
@@ -82,9 +87,10 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Toaster richColors position="top-center" closeButton />
+      <Toaster richColors position="top-center" closeButton theme={theme} />
 
       <div className={canAccess ? 'pb-safe' : ''}>
+        <ErrorBoundary>
         <Suspense fallback={<FullScreenLoader />}>
           <Routes>
             <Route path="/" element={guard(<Dashboard />)} />
@@ -107,6 +113,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
+        </ErrorBoundary>
       </div>
 
       {canAccess && <Navbar />}
