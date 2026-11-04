@@ -1,441 +1,360 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "../services/supabaseClient";
-import { apiService } from "../services/api";
-import { Flame, Activity, Sparkles, Dumbbell, Plus, X, Save, CalendarDays } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Flame, Activity, Sparkles, Dumbbell, Plus, Save, CalendarDays, Trash2, Camera, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiService } from '../services/api';
+import { groupMealsByDay, sumByDay, startOfDayISO, localDateKey } from '../utils/dates';
+import { percentage } from '../utils/nutrition';
+import { inputClass } from '../utils/styles';
+import { Card, FullScreenLoader, Modal } from '../components/ui';
+
+const WORKOUT_DAYS = 60;
+
+const MACROS = [
+  { key: 'protein', targetKey: 'protein_target', label: 'Proteínas', color: 'bg-rose-500', icon: '🍗' },
+  { key: 'carbs', targetKey: 'carbs_target', label: 'Carbohidratos', color: 'bg-blue-500', icon: '🍚' },
+  { key: 'fat', targetKey: 'fat_target', label: 'Grasas', color: 'bg-amber-500', icon: '🥑' },
+];
+
+const ProgressBar = ({ pct, color = 'bg-(--accent)', animate }) => (
+  <div className="w-full bg-(--bg) h-2 border border-(--border) rounded-full overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+    <div className={`${color} h-full rounded-full transition-all duration-1000 ease-out`} style={{ width: animate ? `${pct}%` : '0%' }} />
+  </div>
+);
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [targets, setTargets] = useState(null);
   const [meals, setMeals] = useState([]);
-  const [targets, setTargets] = useState(null); 
-  const [workoutCalories, setWorkoutCalories] = useState(0); 
+  const [workoutsByDay, setWorkoutsByDay] = useState({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [animate, setAnimate] = useState(false);
-  const [historyGroups, setHistoryGroups] = useState([]);
-  const [selectedHistoryGroup, setSelectedHistoryGroup] = useState(null);
-  const [historyLoading, setHistoryLoading] = useState(true);
+  const [selectedDayId, setSelectedDayId] = useState(localDateKey());
 
-  // ESTADOS PARA EL MODAL DE ENTRENAMIENTO
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
-  const [formWorkoutCalories, setFormWorkoutCalories] = useState("");
+  const [formWorkoutCalories, setFormWorkoutCalories] = useState('');
   const [submittingWorkout, setSubmittingWorkout] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
-  const fetchDashboardData = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+  const loadData = useCallback(async () => {
+    const [profileRes, historyRes, workoutsRes] = await Promise.allSettled([
+      apiService.getProfile(),
+      apiService.getAllMealsHistory(),
+      apiService.getWorkoutsSince(startOfDayISO(WORKOUT_DAYS)),
+    ]);
 
-      // 1. Traer objetivos de usuario
-      const { data: profileData, error: profileError } = await supabase
-        .from("user_profiles")
-        .select("calories_target, protein_target, carbs_target, fat_target, weight_goal")
-        .eq("user_id", user.id)
-        .single();
-
-      if (profileError) throw profileError;
-      setTargets(profileData);
-
-      // 2. Traer platos de HOY
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const { data: mealsData, error: mealsError } = await supabase
-        .from("meals")
-        .select("*")
-        .eq("user_id", user.id)
-        .gte("created_at", today.toISOString());
-
-      if (mealsError) throw mealsError;
-      setMeals(mealsData || []);
-
-      // 3. Traer entrenamientos de HOY
-      try {
-        const { data: workoutData } = await supabase
-          .from("workouts")
-          .select("calories_burned")
-          .eq("user_id", user.id)
-          .gte("created_at", today.toISOString());
-        
-        const totalBurned = (workoutData || []).reduce((sum, w) => sum + (w.calories_burned || 0), 0);
-        setWorkoutCalories(totalBurned);
-      } catch (err) {
-        console.log("No se pudo leer la tabla de entrenamientos.", err);
-      }
-
-    } catch (error) {
-      console.error("Error cargando los datos:", error.message);
-    } finally {
-      setLoading(false);
-      setTimeout(() => setAnimate(true), 50);
+    if (profileRes.status === 'fulfilled' && profileRes.value) {
+      setTargets(profileRes.value);
+      setLoadError(null);
+    } else {
+      setLoadError('No se pudo cargar tu perfil');
     }
-  };
 
-  const fetchHistorySummary = async () => {
-    try {
-      const data = await apiService.getAllMealsHistory();
-      const groups = data.reduce((acc, meal) => {
-        const dateObj = new Date(meal.created_at);
-        const dateKey = dateObj.toISOString().split('T')[0];
+    if (historyRes.status === 'fulfilled') setMeals(historyRes.value);
+    else toast.error(historyRes.reason?.message || 'No se pudo cargar el historial');
 
-        if (!acc[dateKey]) {
-          acc[dateKey] = {
-            id: dateKey,
-            dayName: dateObj.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', ''),
-            dayNum: dateObj.toLocaleDateString('es-ES', { day: '2-digit' }),
-            dateLabel: dateObj.toLocaleDateString('es-ES', {
-              weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-            }),
-            meals: [],
-            totalCalories: 0,
-            totalProtein: 0,
-            totalCarbs: 0,
-            totalFat: 0,
-          };
-        }
+    if (workoutsRes.status === 'fulfilled') setWorkoutsByDay(sumByDay(workoutsRes.value, 'calories_burned'));
+    else console.warn('No se pudo leer la tabla de entrenamientos.', workoutsRes.reason);
 
-        acc[dateKey].meals.push(meal);
-        acc[dateKey].totalCalories += meal.calories || 0;
-        acc[dateKey].totalProtein += meal.protein || 0;
-        acc[dateKey].totalCarbs += meal.carbs || 0;
-        acc[dateKey].totalFat += meal.fat || 0;
-        return acc;
-      }, {});
-
-      const sortedGroups = Object.values(groups).sort((a, b) => b.id.localeCompare(a.id));
-      setHistoryGroups(sortedGroups);
-
-      // Si no hay ningún día seleccionado previamente, seleccionamos el primero (el día más reciente/HOY)
-      if (!selectedHistoryGroup && sortedGroups.length > 0) {
-        setSelectedHistoryGroup(sortedGroups[0]);
-      }
-    } catch (err) {
-      console.error("Error cargando historial:", err.message);
-    } finally {
-      setHistoryLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const loadData = async () => {
-      await fetchDashboardData();
-      await fetchHistorySummary();
-    };
-
-    void loadData();
+    setLoading(false);
+    setTimeout(() => setAnimate(true), 50);
   }, []);
 
-  // Función para guardar el entrenamiento en Supabase
+  useEffect(() => {
+    let cancelled = false;
+    // Promise.resolve evita llamar a setState de forma síncrona dentro del efecto
+    Promise.resolve().then(() => !cancelled && loadData());
+    return () => { cancelled = true; };
+  }, [loadData]);
+
+  const dayGroups = useMemo(() => groupMealsByDay(meals, { includeToday: true }), [meals]);
+  const selectedDay = dayGroups.find((g) => g.id === selectedDayId) || dayGroups[0];
+
   const handleSaveWorkout = async (e) => {
     e.preventDefault();
-    if (!formWorkoutCalories || isNaN(formWorkoutCalories)) {
-      return toast.error("Introduce una cantidad válida de calorías");
-    }
+    const kcal = parseInt(formWorkoutCalories, 10);
+    if (!kcal || kcal <= 0 || kcal > 5000) return toast.error('Introduce una cantidad entre 1 y 5000 kcal');
 
     setSubmittingWorkout(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { error } = await supabase.from("workouts").insert([
-        {
-          user_id: user.id,
-          calories_burned: parseInt(formWorkoutCalories),
-          created_at: new Date().toISOString()
-        }
-      ]);
-
-      if (error) throw error;
-
-      toast.success("¡Entrenamiento registrado correctamente!");
-      setFormWorkoutCalories("");
+      await apiService.addWorkout(kcal);
+      toast.success('¡Entrenamiento registrado!');
+      setFormWorkoutCalories('');
       setShowWorkoutModal(false);
-      
-      // Recargar datos para actualizar la interfaz
-      await fetchDashboardData();
-      await fetchHistorySummary();
+      setSelectedDayId(localDateKey());
+      await loadData();
     } catch (err) {
-      console.error(err);
-      toast.error("No se pudo guardar el entrenamiento");
+      toast.error(err.message || 'No se pudo guardar el entrenamiento');
     } finally {
       setSubmittingWorkout(false);
     }
   };
 
-  if (loading || !targets) {
+  const handleDeleteMeal = (meal) => {
+    toast(`¿Eliminar "${meal.dish}"?`, {
+      action: {
+        label: 'Eliminar',
+        onClick: async () => {
+          setDeletingId(meal.id);
+          try {
+            await apiService.deleteMeal(meal.id);
+            setMeals((prev) => prev.filter((m) => m.id !== meal.id));
+            toast.success('Plato eliminado');
+          } catch (err) {
+            toast.error(err.message);
+          } finally {
+            setDeletingId(null);
+          }
+        },
+      },
+      cancel: { label: 'Cancelar', onClick: () => {} },
+    });
+  };
+
+  if (loading) return <FullScreenLoader message="Sincronizando tus macros..." />;
+
+  if (loadError || !targets) {
     return (
-      <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-center text-[var(--text-h)] font-medium gap-4">
-        <div className="w-12 h-12 border-4 border-[var(--border)] border-t-[var(--accent)] rounded-full animate-spin"></div>
-        <p className="animate-pulse text-gray-400 text-sm">Sincronizando tus macros con la IA...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 px-4">
+        <p className="text-sm font-bold text-(--text-h)">{loadError || 'Sin datos de perfil'}</p>
+        <button type="button" onClick={() => { setLoading(true); loadData(); }} className="text-xs font-bold text-(--accent) hover:underline">
+          Reintentar
+        </button>
       </div>
     );
   }
 
-  // DINÁMICO: Si hay un grupo seleccionado en el historial usamos sus comidas, de lo contrario fallback a las comidas de hoy
-  const activeMeals = selectedHistoryGroup ? selectedHistoryGroup.meals : meals;
-
-  // CÁLCULO DE TOTALES BASADO EN EL DÍA SELECCIONADO
-  const totals = activeMeals.reduce((acc, meal) => {
-    acc.calories += meal.calories || 0;
-    acc.protein += meal.protein || 0;
-    acc.carbs += meal.carbs || 0;
-    acc.fat += meal.fat || 0;
-    return acc;
-  }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
-
-  const getPercentage = (consumed, target) => {
-    if (!target) return 0;
-    return Math.min((consumed / target) * 100, 100).toFixed(0);
+  const totals = {
+    calories: selectedDay.totalCalories,
+    protein: selectedDay.totalProtein,
+    carbs: selectedDay.totalCarbs,
+    fat: selectedDay.totalFat,
   };
+  const workoutCalories = workoutsByDay[selectedDay.id] || 0;
 
-  // CÁLCULO DEL BALANCE NETO REAL (Consumido - Gasto Objetivo Base - Gasto Ejercicio)
-  const netBalance = totals.calories - targets.calories_target - workoutCalories;
+  // Balance neto = consumido − objetivo − ejercicio del MISMO día
+  const netBalance = Math.round(totals.calories - targets.calories_target - workoutCalories);
   const isDeficit = netBalance < 0;
-
-  const remaining = {
-    protein: Math.max(targets.protein_target - totals.protein, 0),
-    carbs: Math.max(targets.carbs_target - totals.carbs, 0),
-    fat: Math.max(targets.fat_target - totals.fat, 0),
-  };
+  const caloriesPct = percentage(totals.calories, targets.calories_target);
+  const remaining = Object.fromEntries(
+    MACROS.map((m) => [m.key, Math.max(Math.round(targets[m.targetKey] - totals[m.key]), 0)])
+  );
+  const dayLabel = selectedDay.isToday ? 'hoy' : `${selectedDay.dayName} ${selectedDay.dayNum}`;
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] px-4 py-6 md:py-12 transition-colors duration-300 relative">
+    <div className="min-h-screen bg-(--bg) text-(--text) px-4 py-6 md:py-12 transition-colors duration-300">
       <div className="max-w-xl mx-auto space-y-6 md:space-y-8">
 
         {/* TOP BAR */}
         <div className="flex justify-between items-center">
           <div className="space-y-0.5">
-            <span className="text-[10px] md:text-xs font-black tracking-widest text-[var(--accent)] uppercase flex items-center gap-1">
-              <Sparkles className="w-3 h-3" /> Datos en tiempo real
+            <span className="text-[10px] md:text-xs font-black tracking-widest text-(--accent) uppercase flex items-center gap-1">
+              <Sparkles className="w-3 h-3" /> {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
             </span>
-            <h1 className="text-2xl md:text-3xl font-black text-[var(--text-h)] tracking-tight">Mi Progreso</h1>
+            <h1 className="text-2xl md:text-3xl font-black text-(--text-h) tracking-tight">Mi Progreso</h1>
           </div>
-          {targets?.weight_goal && (
-            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-[var(--text)]">
+          {targets.weight_goal && (
+            <div className="inline-flex items-center gap-2 rounded-full border border-(--border) bg-(--card-bg) px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-(--text)">
               <span>Meta</span>
-              <span>{targets.weight_goal} kg</span>
+              <span className="text-(--text-h)">{targets.weight_goal} kg</span>
             </div>
           )}
         </div>
 
-        {/* HISTORIAL POR DÍAS (SITUADO ARRIBA PARA SELECCIONAR FECHA) */}
+        {/* SELECTOR DE DÍA */}
         <div className="space-y-3">
           <div className="flex items-center justify-between px-1">
-            <h3 className="text-xs font-black tracking-wider text-gray-400 uppercase flex items-center gap-1.5">
+            <h2 className="text-xs font-black tracking-wider text-(--text) uppercase flex items-center gap-1.5">
               <CalendarDays className="w-4 h-4" /> Historial por días
-            </h3>
-            <button
-              type="button"
-              onClick={() => navigate('/historial')}
-              className="text-[10px] font-bold text-[var(--accent)] hover:underline"
-            >
+            </h2>
+            <button type="button" onClick={() => navigate('/historial')} className="text-[10px] font-bold text-(--accent) hover:underline">
               Ver todo
             </button>
           </div>
 
-          {historyLoading ? (
-            <p className="text-xs text-gray-400 italic pl-1">Cargando historial...</p>
-          ) : historyGroups.length === 0 ? (
-            <p className="text-xs text-gray-400 italic pl-1">Aún no tienes entradas en tu historial.</p>
-          ) : (
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
-              {historyGroups.map((group) => {
-                const isSelected = selectedHistoryGroup?.id === group.id;
-                return (
-                  <button
-                    key={group.id}
-                    type="button"
-                    onClick={() => setSelectedHistoryGroup(group)}
-                    className={`flex-shrink-0 w-20 p-3 rounded-2xl border text-center transition-all ${
-                      isSelected
-                        ? 'bg-[var(--accent)] text-white border-[var(--accent)] shadow-lg scale-105'
-                        : 'bg-[var(--card-bg)] border-[var(--border)] text-[var(--text-h)] hover:border-[var(--accent)]'
-                    }`}
-                  >
-                    <p className="text-[10px] font-black uppercase tracking-wider opacity-80">{group.dayName}</p>
-                    <p className="text-xl font-black mt-1">{group.dayNum}</p>
-                    <p className="text-[10px] font-semibold mt-1">{group.totalCalories} kcal</p>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <div className="flex gap-3 overflow-x-auto pb-2 pt-1 scrollbar-none snap-x">
+            {dayGroups.map((group) => {
+              const isSelected = selectedDay.id === group.id;
+              return (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => setSelectedDayId(group.id)}
+                  aria-pressed={isSelected}
+                  className={`snap-start shrink-0 w-20 p-3 rounded-2xl border text-center transition-all ${
+                    isSelected
+                      ? 'bg-(--accent) text-white border-(--accent) shadow-lg'
+                      : 'bg-(--card-bg) border-(--border) text-(--text-h) hover:border-(--accent)'
+                  }`}
+                >
+                  <p className="!text-center text-[10px] font-black uppercase tracking-wider opacity-80">{group.isToday ? 'Hoy' : group.dayName}</p>
+                  <p className="!text-center text-xl font-black mt-1">{group.dayNum}</p>
+                  <p className="!text-center text-[10px] font-semibold mt-1">{group.totalCalories} kcal</p>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* BALANCE ENERGÉTICO NETO */}
-        <div className={`transition-all duration-700 delay-150 transform ${animate ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
-          <div className="bg-[var(--accent-bg)] border border-[var(--accent-border)] p-4 md:p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-inner">
+        <div className={`transition-all duration-700 ${animate ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
+          <div className="bg-(--accent-bg) border border-(--accent-border) p-4 md:p-5 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="space-y-0.5">
-              <p className="text-xs font-bold text-[var(--accent)] flex items-center gap-1">⚖️ Balance Energético Neto</p>
-              <h2 className="text-3xl md:text-4xl font-black text-[var(--text-h)] tracking-tighter">
-                {netBalance > 0 ? `+${netBalance.toLocaleString()}` : netBalance.toLocaleString()} <span className="text-sm md:text-lg font-medium text-[var(--text)] opacity-70">kcal totales</span>
-              </h2>
+              <p className="text-xs font-bold text-(--accent)">⚖️ Balance energético neto ({dayLabel})</p>
+              <p className="text-3xl md:text-4xl font-black text-(--text-h) tracking-tighter">
+                {netBalance > 0 ? '+' : ''}{netBalance.toLocaleString('es-ES')}{' '}
+                <span className="text-sm md:text-lg font-medium text-(--text) opacity-70">kcal</span>
+              </p>
             </div>
 
             <div className="flex flex-col sm:items-end gap-2">
-              <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider text-center ${
-                isDeficit 
-                  ? "bg-green-500/10 text-green-400 border border-green-500/20" 
-                  : "bg-orange-500/10 text-orange-400 border border-orange-500/20"
+              <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider text-center border ${
+                isDeficit ? 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20' : 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20'
               }`}>
-                {isDeficit ? "🔥 Déficit Activo" : "💪 Superávit Activo"}
+                {isDeficit ? '🔥 Déficit' : '💪 Superávit'}
               </span>
-              
-              {/* Desglose de macros restantes con emojis */}
-              <div className="flex gap-3 text-[11px] font-mono opacity-80 pt-1 sm:pt-0">
-                <div><span className="select-none">🍗</span> <span className="font-bold text-[var(--text-h)]">{remaining.protein}g</span></div>
-                <div><span className="select-none">🍚</span> <span className="font-bold text-[var(--text-h)]">{remaining.carbs}g</span></div>
-                <div><span className="select-none">🥑</span> <span className="font-bold text-[var(--text-h)]">{remaining.fat}g</span></div>
+              <div className="flex gap-3 text-[11px] font-mono pt-1 sm:pt-0" title="Macros restantes">
+                <span>🍗 <b className="text-(--text-h)">{remaining.protein}g</b></span>
+                <span>🍚 <b className="text-(--text-h)">{remaining.carbs}g</b></span>
+                <span>🥑 <b className="text-(--text-h)">{remaining.fat}g</b></span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* ENERGÍA EN DOS BLOQUES */}
+        {/* ENERGÍA */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* CONSUMIDAS */}
-          <div className="bg-[var(--card-bg)] border border-[var(--border)] p-5 rounded-3xl shadow-[var(--shadow)] relative overflow-hidden flex flex-col justify-between gap-3">
+          <Card className="p-5 flex flex-col justify-between gap-3">
             <div className="flex justify-between items-start">
               <div className="space-y-0.5">
-                <p className="text-xs font-bold text-gray-400 flex items-center gap-1.5">
-                  <Flame className="w-4 h-4 text-orange-500" /> Energía de Alimentos
+                <p className="text-xs font-bold text-(--text) flex items-center gap-1.5">
+                  <Flame className="w-4 h-4 text-orange-500" /> Energía de alimentos
                 </p>
-                <h2 className="text-2xl font-black text-[var(--text-h)] tracking-tight">
-                  {totals.calories} <span className="text-xs font-medium text-gray-400">/ {targets.calories_target} kcal</span>
-                </h2>
+                <p className="text-2xl font-black text-(--text-h) tracking-tight">
+                  {totals.calories} <span className="text-xs font-medium text-(--text)">/ {targets.calories_target} kcal</span>
+                </p>
               </div>
-              <div className="bg-[var(--accent-bg)] border border-[var(--accent-border)] text-[var(--accent)] font-black text-[10px] px-2 py-0.5 rounded-xl">
-                {getPercentage(totals.calories, targets.calories_target)}%
+              <div className="bg-(--accent-bg) border border-(--accent-border) text-(--accent) font-black text-[10px] px-2 py-0.5 rounded-xl">
+                {caloriesPct}%
               </div>
             </div>
-            <div className="w-full bg-[var(--bg)] h-2 border border-[var(--border)] rounded-full overflow-hidden">
-              <div
-                className="bg-[var(--accent)] h-full rounded-full transition-all duration-1000 ease-out"
-                style={{ width: animate ? `${getPercentage(totals.calories, targets.calories_target)}%` : '0%' }}
-              />
-            </div>
-          </div>
+            <ProgressBar pct={caloriesPct} animate={animate} />
+          </Card>
 
-          {/* QUEMADAS CON ACCIÓN EDITAR/AÑADIR */}
-          <div className="bg-[var(--card-bg)] border border-[var(--border)] p-5 rounded-3xl shadow-[var(--shadow)] flex flex-col justify-between gap-2">
+          <Card className="p-5 flex flex-col justify-between gap-2">
             <div className="flex justify-between items-start">
               <div className="space-y-0.5">
-                <p className="text-xs font-bold text-gray-400 flex items-center gap-1.5">
-                  <Dumbbell className="w-4 h-4 text-purple-500" /> Gasto por Ejercicio
+                <p className="text-xs font-bold text-(--text) flex items-center gap-1.5">
+                  <Dumbbell className="w-4 h-4 text-purple-500" /> Gasto por ejercicio
                 </p>
-                <h2 className="text-2xl font-black text-purple-400 tracking-tight">
-                  -{workoutCalories} <span className="text-xs font-medium text-gray-400">kcal hoy</span>
-                </h2>
+                <p className="text-2xl font-black text-purple-500 tracking-tight">
+                  -{workoutCalories} <span className="text-xs font-medium text-(--text)">kcal {dayLabel}</span>
+                </p>
               </div>
-              <button 
-                onClick={() => setShowWorkoutModal(true)} 
+              <button
+                type="button"
+                onClick={() => setShowWorkoutModal(true)}
                 className="p-1.5 bg-purple-600 text-white rounded-xl hover:bg-purple-700 active:scale-95 transition flex items-center gap-1 text-[10px] font-bold shadow-md shadow-purple-900/20"
               >
                 <Plus className="w-3.5 h-3.5" /> Registrar
               </button>
             </div>
-            <p className="text-[10px] text-gray-500 font-medium">Calorías negativas que impulsan tu déficit real diario.</p>
-          </div>
+            <p className="text-[10px] text-(--text) font-medium">Calorías quemadas que se restan de tu balance.</p>
+          </Card>
         </div>
 
-        {/* SECCIÓN DE MACROS */}
+        {/* MACROS */}
         <div className="space-y-2.5">
-          {[
-            { label: "Proteínas", current: totals.protein, target: targets.protein_target, color: "bg-rose-500", icon: "🍗" },
-            { label: "Carbohidratos", current: totals.carbs, target: targets.carbs_target, color: "bg-blue-500", icon: "🍚" },
-            { label: "Grasas", current: totals.fat, target: targets.fat_target, color: "bg-amber-500", icon: "🥑" }
-          ].map((macro) => {
-            const pct = getPercentage(macro.current, macro.target);
+          {MACROS.map((macro) => {
+            const current = Math.round(totals[macro.key]);
+            const target = targets[macro.targetKey];
+            const pct = percentage(current, target);
             return (
-              <div key={macro.label} className="bg-[var(--card-bg)] border border-[var(--border)] p-4 rounded-2xl flex flex-col gap-2">
+              <Card key={macro.key} className="!rounded-2xl p-4 flex flex-col gap-2">
                 <div className="flex justify-between items-center w-full">
                   <div className="flex items-center gap-2">
-                    <span className="text-base select-none">{macro.icon}</span>
-                    <span className="text-xs md:text-sm font-black text-[var(--text-h)]">{macro.label}</span>
-                    <span className="text-[10px] font-bold text-gray-400 bg-[var(--bg)] border border-[var(--border)] px-1.5 py-0.5 rounded-md ml-1">{pct}%</span>
+                    <span className="text-base select-none" aria-hidden="true">{macro.icon}</span>
+                    <span className="text-xs md:text-sm font-black text-(--text-h)">{macro.label}</span>
+                    <span className="text-[10px] font-bold text-(--text) bg-(--bg) border border-(--border) px-1.5 py-0.5 rounded-md ml-1">{pct}%</span>
                   </div>
-                  <div className="text-right text-xs font-mono text-[var(--text-h)]">
-                    <span className="font-black text-sm">{macro.current}g</span>
-                    <span className="text-gray-400 font-medium"> / {macro.target}g</span>
+                  <div className="text-right text-xs font-mono text-(--text-h)">
+                    <span className="font-black text-sm">{current}g</span>
+                    <span className="text-(--text) font-medium"> / {target}g</span>
                   </div>
                 </div>
-                <div className="w-full bg-[var(--bg)] h-2 border border-[var(--border)] rounded-full overflow-hidden">
-                  <div 
-                    className={`${macro.color} h-full rounded-full transition-all duration-1000 ease-out`} 
-                    style={{ width: animate ? `${pct}%` : '0%' }} 
-                  />
-                </div>
-              </div>
+                <ProgressBar pct={pct} color={macro.color} animate={animate} />
+              </Card>
             );
           })}
         </div>
 
-        {/* HISTORIAL COMIDAS DEL DÍA SELECCIONADO */}
+        {/* COMIDAS DEL DÍA */}
         <div className="space-y-3">
-          <h3 className="text-xs font-black tracking-wider text-gray-400 uppercase flex items-center gap-1.5 pl-1">
-            <Activity className="w-4 h-4" /> Comidas Registradas {selectedHistoryGroup ? `(${selectedHistoryGroup.dayName} ${selectedHistoryGroup.dayNum})` : 'Hoy'}
-          </h3>
+          <h2 className="text-xs font-black tracking-wider text-(--text) uppercase flex items-center gap-1.5 pl-1">
+            <Activity className="w-4 h-4" /> Comidas registradas ({dayLabel})
+          </h2>
           <div className="space-y-2">
-            {activeMeals.length === 0 ? (
-              <p className="text-xs text-gray-400 italic pl-1 py-2">Aún no has registrado alimentos este día.</p>
+            {selectedDay.meals.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => navigate('/scanner')}
+                className="w-full border-2 border-dashed border-(--border) rounded-2xl p-5 text-xs font-bold text-(--text) hover:border-(--accent) hover:text-(--accent) transition flex items-center justify-center gap-2"
+              >
+                <Camera className="w-4 h-4" /> Aún no hay comidas este día. Escanea tu primer plato
+              </button>
             ) : (
-              activeMeals.map((meal) => (
-                <div key={meal.id} className="bg-[var(--card-bg)] border border-[var(--border)] p-3.5 rounded-2xl flex justify-between items-center gap-3">
+              selectedDay.meals.map((meal) => (
+                <Card key={meal.id} className="!rounded-2xl p-3.5 flex justify-between items-center gap-3">
                   <div className="space-y-0.5 min-w-0">
-                    <p className="font-black text-[var(--text-h)] capitalize text-xs md:text-sm truncate">{meal.dish}</p>
-                    <p className="text-[10px] md:text-xs text-gray-400 font-mono flex items-center gap-1.5">
-                      <span>🍗 P: {meal.protein}g</span> · <span>🍚 HC: {meal.carbs}g</span> · <span>🥑 G: {meal.fat}g</span>
+                    <p className="font-black text-(--text-h) capitalize text-xs md:text-sm truncate">{meal.dish}</p>
+                    <p className="text-[10px] md:text-xs text-(--text) font-mono">
+                      {new Date(meal.created_at).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                      {' · '}P {meal.protein}g · HC {meal.carbs}g · G {meal.fat}g
                     </p>
                   </div>
-                  <span className="text-xs font-black text-[var(--text-h)] bg-[var(--border)] px-2.5 py-1 rounded-xl whitespace-nowrap shrink-0">
-                    +{meal.calories} kcal
-                  </span>
-                </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-xs font-black text-(--text-h) bg-(--bg) border border-(--border) px-2.5 py-1 rounded-xl whitespace-nowrap">
+                      +{meal.calories} kcal
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteMeal(meal)}
+                      disabled={deletingId === meal.id}
+                      aria-label={`Eliminar ${meal.dish}`}
+                      className="p-1.5 rounded-lg text-(--text) hover:text-red-500 hover:bg-red-500/10 transition disabled:opacity-50"
+                    >
+                      {deletingId === meal.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </Card>
               ))
             )}
           </div>
         </div>
-
       </div>
 
-      {/* MODAL PARA AÑADIR/EDITAR CALORÍAS DE ENTRENAMIENTO */}
-      {showWorkoutModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <form onSubmit={handleSaveWorkout} className="bg-[var(--card-bg)] border border-[var(--border)] w-full max-w-md p-6 rounded-3xl space-y-4 shadow-2xl">
-            <div className="flex justify-between items-center border-b border-[var(--border)] pb-3">
-              <div className="flex items-center gap-2">
-                <Dumbbell className="w-5 h-5 text-purple-500" />
-                <h3 className="font-bold text-lg text-[var(--text-h)]">Añadir Calorías Quemadas</h3>
-              </div>
-              <button type="button" onClick={() => setShowWorkoutModal(false)} className="p-1.5 bg-[var(--bg)] border border-[var(--border)] rounded-full text-[var(--text)] hover:bg-[var(--border)]">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-gray-400 block">CALORÍAS QUEMADAS (KCAL) *</label>
-              <input 
-                type="number" 
-                placeholder="Ej: 450" 
-                required 
-                value={formWorkoutCalories} 
-                onChange={(e) => setFormWorkoutCalories(e.target.value)} 
-                className="w-full bg-[var(--bg)] border border-[var(--border)] text-base font-bold text-[var(--text-h)] rounded-xl px-3 py-2 outline-none focus:border-purple-500"
-              />
-              <span className="text-[10px] text-gray-500 block">Este valor restará calorías a tu balance neto para cuantificar tu déficit corporal diario.</span>
-            </div>
-
-            <button 
-              type="submit" 
-              disabled={submittingWorkout} 
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 transition"
-            >
-              <Save className="w-4 h-4" />
-              {submittingWorkout ? "Guardando..." : "GUARDAR ENTRENAMIENTO"}
-            </button>
-          </form>
-        </div>
-      )}
+      <Modal open={showWorkoutModal} onClose={() => setShowWorkoutModal(false)} title="Añadir calorías quemadas" icon={Dumbbell}>
+        <form onSubmit={handleSaveWorkout} className="space-y-4">
+          <label className="block space-y-1">
+            <span className="text-xs font-bold text-(--text) block">CALORÍAS QUEMADAS HOY (KCAL) *</span>
+            <input
+              type="number" inputMode="numeric" min={1} max={5000} placeholder="Ej: 450" required autoFocus
+              value={formWorkoutCalories} onChange={(e) => setFormWorkoutCalories(e.target.value)}
+              className={`${inputClass} text-base`}
+            />
+            <span className="text-[10px] text-(--text) block">Se restará de tu balance neto de hoy.</span>
+          </label>
+          <button
+            type="submit"
+            disabled={submittingWorkout}
+            className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 transition"
+          >
+            {submittingWorkout ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {submittingWorkout ? 'Guardando...' : 'GUARDAR ENTRENAMIENTO'}
+          </button>
+        </form>
+      </Modal>
     </div>
   );
 }

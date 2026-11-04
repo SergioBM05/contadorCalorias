@@ -1,157 +1,115 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster, toast } from 'sonner';
 import { supabase } from './services/supabaseClient';
-import Dashboard from './pages/Dashboard';
-import Scanner from './pages/Scanner';
+import { apiService } from './services/api';
+import { isProfileComplete, readPendingProfile, clearPendingProfile } from './utils/nutrition';
+import { FullScreenLoader } from './components/ui';
+import Navbar from './components/Navbar';
 import Auth from './pages/Auth';
-import { RefreshCw } from 'lucide-react';
-import Profile from './pages/profile';
-import Historial from './pages/Historial';
-import Navbar from './pages/Navbar';
-import { Toaster } from 'sonner';
-import Evolucion from './pages/Evolucion';
-import Dieta from './pages/Dieta';
+
+// Code-splitting: cada página se descarga solo cuando se visita (recharts pesa mucho)
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Scanner = lazy(() => import('./pages/Scanner'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Historial = lazy(() => import('./pages/Historial'));
+const Evolucion = lazy(() => import('./pages/Evolucion'));
+const Dieta = lazy(() => import('./pages/Dieta'));
+
+/**
+ * El test de registro guarda el perfil en localStorage antes de crear la cuenta.
+ * Aquí se sincroniza en cuanto hay sesión (al instante, o tras confirmar el email).
+ */
+const syncPendingProfile = async (email) => {
+  const pending = readPendingProfile(email);
+  if (!pending) return null;
+  try {
+    const saved = await apiService.saveProfile(pending);
+    clearPendingProfile();
+    toast.success('¡Perfil configurado! Ya puedes empezar a registrar tus comidas');
+    return saved;
+  } catch (err) {
+    console.error('No se pudo sincronizar el perfil pendiente:', err);
+    return null;
+  }
+};
 
 export default function App() {
   const [session, setSession] = useState(null);
   const [initializing, setInitializing] = useState(true);
-  const [hasProfile, setHasProfile] = useState(false); // 
+  const [hasProfile, setHasProfile] = useState(false);
+  const checkedUserRef = useRef(null);
 
-  const isProfileComplete = (profile) => {
-    if (!profile) return false;
+  const checkUserProfile = useCallback(async (currentSession) => {
+    const userId = currentSession?.user?.id ?? null;
 
-    return Boolean(
-      profile.gender &&
-      profile.age != null &&
-      profile.weight_kg != null &&
-      profile.height_cm != null &&
-      profile.activity_level &&
-      profile.fitness_goal &&
-      profile.weight_goal != null &&
-      profile.weight_goal !== '' &&
-      profile.calories_target != null &&
-      profile.protein_target != null &&
-      profile.carbs_target != null &&
-      profile.fat_target != null
-    );
-  };
+    // Evita repetir la consulta en cada refresco de token
+    if (userId && checkedUserRef.current === userId) return;
+    checkedUserRef.current = userId;
 
-  useEffect(() => {
-    // Función interna para verificar si el usuario logueado tiene perfil en la DB
-    const checkUserProfile = async (currentSession) => {
-      if (!currentSession) {
-        setHasProfile(false);
-        setInitializing(false);
-        return;
-      }
+    if (!userId) {
+      setHasProfile(false);
+      setInitializing(false);
+      return;
+    }
 
-      try {
-        // Buscamos si el usuario ya completó sus datos físicos en user_profiles
-        const { data } = await supabase
-          .from('user_profiles')
-          .select('gender, age, weight_kg, height_cm, activity_level, fitness_goal, weight_goal, calories_target, protein_target, carbs_target, fat_target')
-          .eq('user_id', currentSession.user.id)
-          .maybeSingle(); // Usa maybeSingle para que no rompa si da vacío
-
-        setHasProfile(isProfileComplete(data));
-      } catch (err) {
-        console.error("Error verificando perfil:", err);
-      } finally {
-        setInitializing(false);
-      }
-    };
-
-    // 1. Comprobación inicial de la sesión
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      checkUserProfile(session);
-    });
-
-    // 2. Escuchar cambios de estado (Login, Logout, Registro)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      checkUserProfile(session);
-    });
-
-    return () => subscription.unsubscribe();
+    try {
+      let profile = await apiService.getProfile();
+      if (!isProfileComplete(profile)) profile = (await syncPendingProfile(currentSession.user.email)) || profile;
+      setHasProfile(isProfileComplete(profile));
+    } catch (err) {
+      console.error('Error verificando perfil:', err);
+      setHasProfile(false);
+    } finally {
+      setInitializing(false);
+    }
   }, []);
 
-  if (initializing) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-(--bg)">
-        <RefreshCw className="w-8 h-8 text-(--accent) animate-spin" />
-      </div>
-    );
-  }
+  useEffect(() => {
+    // onAuthStateChange emite INITIAL_SESSION al suscribirse, no hace falta getSession aparte.
+    // Diferimos la consulta para no bloquear el callback de Supabase (recomendación oficial).
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      setTimeout(() => checkUserProfile(newSession), 0);
+    });
+    return () => subscription.unsubscribe();
+  }, [checkUserProfile]);
 
-  // Comprobamos si el usuario cumple los requisitos para ver la barra de navegación
-  const showNavbar = Boolean(session && hasProfile);
+  if (initializing) return <FullScreenLoader />;
+
+  const canAccess = Boolean(session && hasProfile);
+  const guard = (element) => (canAccess ? element : <Navigate to="/auth" replace />);
 
   return (
     <BrowserRouter>
-      <Toaster richColors position="top-center" />
-      
-      {/* Si el usuario está logueado, añadimos padding inferior para que el contenido no quede oculto bajo el Navbar */}
-      <div className={showNavbar ? "pb-24" : ""}>
-        <Routes>
-          {/* 1. Dashboard: Solo si hay sesión Y tiene perfil completo */}
-          <Route
-            path="/"
-            element={
-              session
-                ? (hasProfile ? <Dashboard session={session} /> : <Navigate to="/auth" replace />)
-                : <Navigate to="/auth" replace />
-            }
-          />
+      <Toaster richColors position="top-center" closeButton />
 
-          {/* 2. Escáner: Protegido igual */}
-          <Route
-            path="/scanner"
-            element={
-              session
-                ? (hasProfile ? <Scanner session={session} /> : <Navigate to="/auth" replace />)
-                : <Navigate to="/auth" replace />
-            }
-          />
+      <div className={canAccess ? 'pb-safe' : ''}>
+        <Suspense fallback={<FullScreenLoader />}>
+          <Routes>
+            <Route path="/" element={guard(<Dashboard />)} />
+            <Route path="/scanner" element={guard(<Scanner />)} />
+            <Route path="/profile" element={guard(<Profile />)} />
+            <Route path="/historial" element={guard(<Historial />)} />
+            <Route path="/evolucion" element={guard(<Evolucion />)} />
+            <Route path="/dieta" element={guard(<Dieta />)} />
 
-          {/* 3. Auth: Si NO hay sesión va a Auth. Si HAY sesión pero NO perfil, lo DEJAMOS en Auth para que haga el Paso 2 */}
-          <Route
-            path="/auth"
-            element={
-              !session
-                ? <Auth onProfileCompleted={() => setHasProfile(true)} />
-                : (hasProfile ? <Navigate to="/" replace /> : <Auth onProfileCompleted={() => setHasProfile(true)} />)
-            }
-          />
+            {/* Sin sesión → login/registro. Con sesión pero sin perfil → completar el test. */}
+            <Route
+              path="/auth"
+              element={
+                canAccess
+                  ? <Navigate to="/" replace />
+                  : <Auth session={session} onProfileCompleted={() => setHasProfile(true)} />
+              }
+            />
 
-          <Route
-            path='/profile'
-            element={session && hasProfile ? <Profile /> : <Navigate to="/auth" replace />}
-          />
-
-          <Route
-            path='/historial'
-            element={session && hasProfile ? <Historial /> : <Navigate to="/auth" replace />}
-          />
-
-           <Route
-            path='/evolucion'
-            element={session && hasProfile ? <Evolucion /> : <Navigate to="/auth" replace />}
-          />
-
-          <Route
-            path='/dieta'
-            element={session && hasProfile ? <Dieta /> : <Navigate to="/auth" replace />}
-          />
-
-          <Route path="*" element={<Navigate to="/" replace />} />
-
-
-        </Routes>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </div>
 
-      {/* 4. Navbar Flotante: Solo se monta si el usuario está autenticado y con perfil completo */}
-      {showNavbar && <Navbar />}
+      {canAccess && <Navbar />}
     </BrowserRouter>
   );
 }
