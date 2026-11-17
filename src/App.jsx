@@ -8,6 +8,7 @@ import { FullScreenLoader } from './components/ui';
 import Navbar from './components/Navbar';
 import Auth from './pages/Auth';
 import ErrorBoundary from './components/ErrorBoundary';
+import { MODO_DEMO, reiniciarDemo, salirDeDemo } from './services/demo';
 import { useResolvedTheme, watchSystemTheme } from './utils/theme';
 
 // Code-splitting: cada página se descarga solo cuando se visita (recharts pesa mucho)
@@ -88,6 +89,13 @@ export default function App() {
   return (
     <BrowserRouter>
       <Toaster richColors position="top-center" closeButton theme={theme} />
+      {MODO_DEMO && (
+        <div className="fixed top-1 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 rounded-full bg-amber-400 text-black text-[11px] font-bold px-3 py-1 shadow-lg whitespace-nowrap">
+          <span>MODO DEMO · datos de ejemplo</span>
+          <button type="button" onClick={reiniciarDemo} className="underline">Reiniciar</button>
+          <button type="button" onClick={salirDeDemo} className="underline">Salir</button>
+        </div>
+      )}
 
       <div className={canAccess ? 'pb-safe' : ''}>
         <ErrorBoundary>

@@ -6,6 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
+    sourcemap: false, // sin mapas de código fuente en producción
     rolldownOptions: {
       output: {
         // Librerías en chunks separados: cambian poco y el navegador las cachea entre despliegues

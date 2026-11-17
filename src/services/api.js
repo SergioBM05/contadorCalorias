@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { MODO_DEMO, peticionDemo } from './demo';
 
 // Configurable por entorno: en local define VITE_API_URL=http://localhost:5000/api en .env.local
 const API_URL = (import.meta.env.VITE_API_URL || 'https://back-contador-calorias.vercel.app/api').replace(/\/$/, '');
@@ -15,6 +16,8 @@ const getAuthHeaders = async () => {
 };
 
 const request = async (path, { method = 'GET', body, fallbackError }) => {
+  if (MODO_DEMO) return peticionDemo(path, { body });
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
